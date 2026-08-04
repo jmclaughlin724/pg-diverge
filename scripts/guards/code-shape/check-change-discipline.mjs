@@ -223,6 +223,8 @@ function monetizationSurfaceViolations(candidates, root) {
   return candidates.flatMap((file) => {
     if (
       file.startsWith("tests/") ||
+      file.startsWith("services/license-worker/") ||
+      file.startsWith("scripts/stripe/") ||
       file === "scripts/guards/code-shape/check-change-discipline.mjs"
     ) {
       return [];

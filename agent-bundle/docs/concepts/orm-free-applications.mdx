@@ -58,16 +58,16 @@ This pattern uses a driver or platform client to execute SQL. The generated Supa
 
 ## Keep one source of truth
 
-| Concern | Owner |
-| --- | --- |
-| Schema intent | Declarative PostgreSQL SQL files in `schemaPaths` |
-| Migration SQL | `supaschema diff` |
-| Replay and lock safety | `supaschema check` |
-| Local and remote apply | `supaschema sync` targets |
-| TypeScript shape | `database.types.ts` |
-| Runtime validation | `database.zod.ts` |
-| API/request validation | Generated Zod schemas |
-| Query execution | PostgreSQL driver, platform client, or optional query builder |
+| Concern                | Owner                                                         |
+| ---------------------- | ------------------------------------------------------------- |
+| Schema intent          | Declarative PostgreSQL SQL files in `schemaPaths`             |
+| Migration SQL          | `supaschema diff`                                             |
+| Replay and lock safety | `supaschema check`                                            |
+| Local and remote apply | `supaschema sync` targets                                     |
+| TypeScript shape       | `database.types.ts`                                           |
+| Runtime validation     | `database.zod.ts`                                             |
+| API/request validation | Generated Zod schemas                                         |
+| Query execution        | PostgreSQL driver, platform client, or optional query builder |
 
 ## Related
 

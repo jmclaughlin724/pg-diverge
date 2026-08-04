@@ -24,8 +24,8 @@ The tables below cover the codes that block generation most often. They are **no
 | `SUPA_DIFF_LINEAGE_BROKEN` | A pending generated migration exists. Resolve a source-backed post-migration baseline: `git:<ref>`, `dir:<path>`, `dump:<file>`, `catalog:<snapshot>`, or reviewed `empty:`. |
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | The transition is already pending. Apply or remove the pending migration instead of regenerating. |
 | `SUPA_DIFF_REPLACE_*` | `diff --replace` is only for a generated migration inside `migrationsDir` whose original lineage baseline matches the planned `--from`. If a configured target records the version as applied, create a forward migration instead. |
+| `SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED` | Generated lineage is absent, a hand-authored tail follows it, or replay failed. Run `supaschema doctor`, resolve the first replay diagnostic, and use `sources.from: "auto"` or `--from migrations:<migrationsDir>`. Never patch generated types or select an unrelated Git/empty fallback. |
 | `SUPA_MIGRATION_BASELINE_MISMATCH`, `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | Generated migration lineage does not match the chosen snapshot, or a `migrations:` baseline points somewhere other than `migrationsDir`. |
-| `SUPA_SOURCE_BASELINE_REQUIRED` | Existing migrations with no resolvable baseline. Supply `--from migrations:<migrationsDir>` or a source-backed snapshot. |
 | `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED` | `migrations:` is a before-state only; it is never a generation target. |
 | `SUPA_MIGRATION_BASELINE_FORMAT_DRIFT` | Review the generated SQL normally. Previous lineage came from an older model format, so fingerprints are not directly comparable. Do not add hints, bypass the chain gate, or edit generated migrations to silence it — the next generated migration writes versioned lineage and restores comparable proof. |
 | `SUPA_MIGRATIONS_STALE_BASELINE` | See [maintain.md](maintain.md); prune through `supaschema migrations --prune-stale` with a resolved target. |
@@ -35,9 +35,13 @@ The tables below cover the codes that block generation most often. They are **no
 | Code | Resolution |
 | --- | --- |
 | `SUPA_DIFF_EMPTY_PLAN` | A named or file-output diff produced no operations. |
-| `SUPA_DIFF_GENERATED_CONTRACT_DIRTY`, `SUPA_DIFF_MIGRATIONS_DIRTY` | Generated contracts or migration files carry unstaged changes beyond a proven `git:INDEX` closure, or are dirty against another Git baseline. Repair or close that migration unit before diffing again. |
+| `SUPA_DIFF_GENERATED_CONTRACT_DIRTY`, `SUPA_DIFF_MIGRATIONS_DIRTY` | Generated contracts or migration files carry unstaged changes beyond a proven `git:INDEX` closure, or are dirty against another Git baseline. Under a `migrations:` replay baseline only lineage-bearing (generated) dirty files block; a hand-authored tail is legitimate replay input for an unscoped diff. Repair or close the dirty migration unit before diffing again. |
 | `SUPA_DIFF_CONFIG_DIRTY`, `SUPA_DIFF_SCOPED_DIRTY_SCHEMA` | A scoped `--schema` diff cannot own dirty global config or dirty schema files outside the requested filter. Close the owning unit, or use an unscoped diff that owns the change. |
 | `SUPA_SELFCHECK_*` | A live catalog's re-extracted rendered SQL diverges in object identity. Fix the model/render owner. |
+| `SUPA_BUILD_STALE_DIST` | The CLI ran from a checkout whose `dist` is older than `src`. Run `npm run build` and re-run; never treat stale-dist behavior as a source regression. |
+| `SUPA_TYPES_CONTRACT_DRIFT` | `types --check` found generated contracts missing or stale. Run `supaschema types`, review the generated diff, and commit it with the owning schema change; never hand-edit the contract to silence drift. |
+| `SUPA_GENERATED_ARTIFACT_EDIT` | Change declarative SQL or generator config, run `supaschema doctor`, then regenerate with `supaschema sync` or, only when schema state already matches, `supaschema types`. Review the generated diff and preserve unexplained drift. |
+| `SUPA_GENERATED_ARTIFACT_GUARD_FAILED` | The hook could not prove the write safe because its payload or config could not be classified. The write remains denied. Run `supaschema config validate`, repair the first error, run `supaschema doctor`, and retry the original operation. Never bypass or unregister the hook. |
 
 ## Source boundaries
 

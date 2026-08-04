@@ -1,0 +1,94 @@
+name: Snapshot
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-npm
+  queue: max
+
+jobs:
+  publish-next:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      # Same endpoint baseline as the release publish job; npm registry access is
+      # required for the idempotency probe, trusted publishing, and registry smoke.
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.actions.githubusercontent.com:443 api.github.com:443 fulcio.sigstore.dev:443 github.com:443 npm.pkg.github.com:443 registry.npmjs.org:443 rekor.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      # No check-latest: use the runner's cached Node 24 toolcache (deterministic
+      # patch, no nodejs.org fetch on the OIDC publish job). The npm-version
+      # preflight below fails loudly if the cached npm predates 11.5.1.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - name: Confirm npm supports OIDC trusted publishing
+        run: |
+          npm --version
+          node -e "const { execFileSync } = require('node:child_process'); const raw = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(); const match = /^(\d+)\.(\d+)\.(\d+)/.exec(raw); if (!match) throw new Error('could not parse npm version: ' + raw); const [major, minor, patch] = match.slice(1).map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error('npm >= 11.5.1 is required for trusted publishing, found ' + raw);"
+      - run: npm ci
+      - run: npm audit signatures
+      # Stamp before build so dist/build-info.json carries the snapshot version.
+      - name: Stamp snapshot version
+        id: snapshot
+        run: node scripts/release/snapshot-version.mjs >> "$GITHUB_OUTPUT"
+      - run: npm run build
+      - run: npm run check:package
+      # Pack unconditionally so a rerun after a failed attestation can retry
+      # the attest step even when the version is already published.
+      - name: Pack package
+        id: pack
+        run: |
+          tarball="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" --silent)"
+          tarball_path="$RUNNER_TEMP/$tarball"
+          echo "SUPASCHEMA_TARBALL=$tarball_path" >> "$GITHUB_ENV"
+          echo "tarball_path=$tarball_path" >> "$GITHUB_OUTPUT"
+      # Render into an isolated subdir, matching release.yml: the --out parent
+      # directory is treated as the migrations dir for the lineage chain gate.
+      - name: Smoke npx from tarball
+        if: steps.snapshot.outputs.published == 'false'
+        run: |
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema \
+            --config tests/fixtures/basic/supaschema.config.json \
+            diff \
+            --from dir:tests/fixtures/basic/from \
+            --to dir:tests/fixtures/basic/to \
+            --out "$RUNNER_TEMP/smoke/basic.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
+      - name: Publish snapshot to the next dist-tag
+        if: steps.snapshot.outputs.published == 'false'
+        run: npm publish "$SUPASCHEMA_TARBALL" --access public --provenance --tag next
+      - name: Attest tarball provenance
+        id: attest
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: ${{ steps.pack.outputs.tarball_path }}
+      - name: Prepare alternative package managers
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.2 --activate
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Registry smoke against the immutable snapshot version
+        env:
+          SUPASCHEMA_REGISTRY_SMOKE_SPEC: supaschema@${{ steps.snapshot.outputs.version }}
+        run: node scripts/release/registry-smoke.mjs

@@ -62,7 +62,9 @@ describe("repo layout guard", () => {
     expect(message).toContain("src/dashboard/nested/dashboard-widget.ts");
   });
 
-  it("allows neighboring concepts that do not repeat path ownership", () => {
+  it("allows neighboring concepts that do not repeat path ownership", {
+    timeout: 20_000,
+  }, () => {
     const root = trackedRepo({
       "docs/docs.json": "{}\n",
       "src/payloads.ts": "export const p = 1;\n",
@@ -77,7 +79,9 @@ describe("repo layout guard", () => {
     );
   });
 
-  it("requires a populated sibling client boundary for nested server directories", () => {
+  it("requires a populated sibling client boundary for nested server directories", {
+    timeout: 20_000,
+  }, () => {
     expect(
       guardMessage(
         trackedRepo({

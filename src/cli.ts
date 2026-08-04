@@ -2,6 +2,7 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
+import { emitBuildWarnings, readBuildInfo } from "./build-info.js";
 import { selfCheckCatalog } from "./catalog/selfcheck.js";
 import { type CheckCommandOptions, runCheckCommand } from "./cli/check-selection.js";
 import { registerDiffCommands } from "./cli/diff.js";
@@ -22,9 +23,14 @@ import {
 } from "./cli/runtime.js";
 import { registerToolCommands } from "./cli/tools.js";
 import { formatConfigValidationDiagnostics, validateConfig } from "./config/validate.js";
-import { diagnosticCatalog } from "./diagnostics/catalog.js";
+import { type DiagnosticDefinition, diagnosticDefinitions } from "./diagnostics/catalog.js";
 import { hasErrors } from "./diagnostics/diagnostics.js";
-import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./hooks/output.js";
+import {
+  type AgentHookOutput,
+  generatedArtifactEditHookOutput,
+  generatedArtifactGuardFailureOutput,
+  schemaWriteHookOutput,
+} from "./hooks/output.js";
 import { latestMigrationFile } from "./migrations/files.js";
 import { filterModel } from "./pipeline/diff.js";
 import { extractSourceModel } from "./source/extract.js";
@@ -63,6 +69,7 @@ interface VerifyCommandOptions {
 const program = new Command();
 configureCliShared(program);
 const cliVersion = await readPackageVersion();
+await emitBuildWarnings(await readBuildInfo(cliVersion));
 program
   .name("supaschema")
   .description("Generate deterministic, replay-safe PostgreSQL/Supabase migrations from SQL trees.")
@@ -298,6 +305,7 @@ program
   )
   .description("Re-extract the live catalog's rendered SQL and report identity normalization gaps.")
   .action(async (options: { databaseUrl?: string }) => {
+    const config = await loadCliConfig();
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
@@ -306,7 +314,7 @@ program
       process.exitCode = 1;
       return;
     }
-    const result = await selfCheckCatalog({ databaseUrl });
+    const result = await selfCheckCatalog({ config, databaseUrl });
     printDiagnostics(result.diagnostics);
     process.stdout.write(
       `selfcheck: ${result.checkedObjects} objects, ${result.mismatches} parity mismatches\n`
@@ -319,16 +327,65 @@ program
 program
   .command("explain")
   .argument("<code>", "diagnostic code, e.g. SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED")
+  .option("--json", "print the structured remediation definition as JSON")
   .description("Explain a supaschema diagnostic code.")
-  .action((code: string) => {
-    const summary = diagnosticCatalog[code.toUpperCase()];
-    if (!summary) {
+  .action((code: string, options: { json?: boolean }) => {
+    const normalizedCode = code.toUpperCase();
+    const definition = diagnosticDefinitions[normalizedCode];
+    if (!definition) {
       process.stderr.write(`unknown diagnostic code "${code}"\n`);
       process.exitCode = 1;
       return;
     }
-    process.stdout.write(`${code.toUpperCase()}: ${summary}\n`);
+    process.stdout.write(
+      options.json === true
+        ? `${JSON.stringify({ code: normalizedCode, ...definition }, null, 2)}\n`
+        : renderDiagnosticDefinition(normalizedCode, definition)
+    );
   });
+
+function renderDiagnosticDefinition(code: string, definition: DiagnosticDefinition): string {
+  const lines = [`${code}: ${definition.summary}`];
+  if (definition.cause) {
+    lines.push(`Cause: ${definition.cause}`);
+  }
+  appendNumberedSection(lines, "Recovery", definition.recoverySteps);
+  appendBulletedSection(lines, "Commands", definition.commands);
+  appendBulletedSection(lines, "Expected evidence", definition.expectedEvidence);
+  appendBulletedSection(lines, "Do not", definition.forbiddenActions);
+  if (definition.docs) {
+    lines.push(`Docs: ${definition.docs}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function appendNumberedSection(
+  lines: string[],
+  heading: string,
+  values: readonly string[] | undefined
+): void {
+  if (!values || values.length === 0) {
+    return;
+  }
+  lines.push(`${heading}:`);
+  for (const [index, value] of values.entries()) {
+    lines.push(`  ${index + 1}. ${value}`);
+  }
+}
+
+function appendBulletedSection(
+  lines: string[],
+  heading: string,
+  values: readonly string[] | undefined
+): void {
+  if (!values || values.length === 0) {
+    return;
+  }
+  lines.push(`${heading}:`);
+  for (const value of values) {
+    lines.push(`  - ${value}`);
+  }
+}
 
 const hookCommand = program
   .command("hook", { hidden: true })
@@ -348,24 +405,27 @@ hookCommand
   );
 
 hookCommand
-  .command("generated-migration-edit", { hidden: true })
+  .command("generated-artifact-edit", { hidden: true })
   .option("--runtime <runtime>", "claude | codex", "claude")
-  .description("Run the internal generated-migration edit guard.")
-  .action((options: { runtime?: string }) =>
-    runHookFailOpen(async () => {
-      const runtime = options.runtime === "codex" ? "codex" : "claude";
+  .description("Run the internal generated-artifact edit guard.")
+  .action(async (options: { runtime?: string }) => {
+    const runtime = options.runtime === "codex" ? "codex" : "claude";
+    let output: AgentHookOutput | undefined;
+    try {
       const payload = JSON.parse(await readStdin());
-      const output = generatedMigrationEditHookOutput(payload, runtime);
-      if (runtime === "codex") {
-        process.stdout.write(`${JSON.stringify(output ?? {})}\n`);
-        return;
-      }
-      if (output?.reason !== undefined) {
-        process.stderr.write(`${output.reason}\n`);
-        process.exitCode = 2;
-      }
-    })
-  );
+      output = generatedArtifactEditHookOutput(payload, runtime);
+    } catch {
+      output = generatedArtifactGuardFailureOutput(runtime);
+    }
+    if (runtime === "codex") {
+      process.stdout.write(`${JSON.stringify(output ?? {})}\n`);
+      return;
+    }
+    if (output?.reason !== undefined) {
+      process.stderr.write(`${output.reason}\n`);
+      process.exitCode = 2;
+    }
+  });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${redactRawError(error)}\n`);

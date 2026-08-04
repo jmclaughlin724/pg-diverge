@@ -3,7 +3,7 @@ import { makeObject } from "../sql/statements.js";
 import type { SchemaObject } from "../types.js";
 import {
   type CatalogQuery,
-  managedSchemaFilter,
+  catalogSchemaFilter,
   notExtensionMember,
   notExtensionMemberOid,
   text,
@@ -19,7 +19,7 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
     join pg_namespace n on n.oid = t.typnamespace
     join pg_enum e on e.enumtypid = t.oid
     where t.typtype = 'e'
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("t", "pg_type")}
     group by n.nspname, t.typname
     order by n.nspname, t.typname
@@ -51,7 +51,7 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
     from pg_type t
     join pg_namespace n on n.oid = t.typnamespace
     where t.typtype = 'd'
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("t", "pg_type")}
     order by n.nspname, t.typname
   `);
@@ -95,7 +95,7 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
     join pg_type dep_t on dep_t.oid = coalesce(nullif(raw_t.typelem, 0), raw_t.oid)
     join pg_namespace dep_n on dep_n.oid = dep_t.typnamespace
     where c.relkind = 'c'
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
       and ${notExtensionMemberOid("pg_type", "c.reltype")}
     group by n.nspname, c.relname

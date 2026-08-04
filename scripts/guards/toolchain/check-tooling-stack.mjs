@@ -2,21 +2,18 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import {
-  commandArgs,
-  commandName,
-  commandSegmentObjects,
-} from "../../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { publicSkillNames } from "../../skills/sync-llm.mjs";
+import { parseShellCommand, staticWordValue } from "../../agent-hooks/shell-command.mjs";
 import { assert, ok } from "../lib/assertions.js";
 import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const exactlyPinnedTools = [
+  "@astrojs/language-server",
   "@biomejs/biome",
   "@vitest/coverage-v8",
   "cclsp",
   "prettier",
+  "prettier-plugin-astro",
   "ultracite",
   "vitest",
 ];
@@ -52,6 +49,7 @@ const expectedBiomeExclusions = [
   "!.claude/worktrees",
   ...extractedWorkflowBiomeExclusions,
   "!agent-bundle",
+  "!**/*.astro",
   "!tests/fixtures/sample-project/supabase/functions",
   "!.agents",
   "!.codex",
@@ -162,24 +160,26 @@ function isGeneratedDistModuleSpecifier(value) {
   );
 }
 
-function unwrappedPackageRunnerCommand(words) {
-  const name = commandName(words);
-  const args = commandArgs(words);
-  if (name === "npx") {
-    return args[0] === "--no-install" ? args.slice(1) : args;
+function unwrappedPackageRunnerWords(invocation) {
+  const words = [
+    invocation.executable ?? "",
+    ...invocation.arguments.map((word) => staticWordValue(word) ?? ""),
+  ];
+  if (words[0] === "npx") {
+    return words[1] === "--no-install" ? words.slice(2) : words.slice(1);
   }
-  if (name === "npm" && args[0] === "exec") {
-    return args[1] === "--" ? args.slice(2) : args.slice(1);
+  if (words[0] === "npm" && words[1] === "exec") {
+    return words[2] === "--" ? words.slice(3) : words.slice(2);
   }
   return words;
 }
 
 function invokesDirectBiomeOrUltracite(command) {
-  return commandSegmentObjects(command).some((segment) => {
-    const words = unwrappedPackageRunnerCommand(segment.words);
-    const name = commandName(words);
-    const args = commandArgs(words);
-    return name === "biome" || (name === "ultracite" && ultraciteWriteCommands.has(args[0]));
+  return parseShellCommand(command).invocations.some((invocation) => {
+    const words = unwrappedPackageRunnerWords(invocation);
+    return (
+      words[0] === "biome" || (words[0] === "ultracite" && ultraciteWriteCommands.has(words[1]))
+    );
   });
 }
 
@@ -237,55 +237,24 @@ function assertUltraciteEntryPoints(packageJson, lefthook, root) {
       `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must route Biome and Ultracite through npm scripts`
     );
   }
-  assertMirrorSyncOrdering(lefthook, preCommitJobs);
+  assertNoSurfaceSyncJob(lefthook, preCommitJobs);
 }
 
-function assertMirrorSyncOrdering(lefthook, preCommitJobs) {
+function assertNoSurfaceSyncJob(lefthook, preCommitJobs) {
   assert(
     lefthook?.["pre-commit"]?.piped === true,
-    "lefthook pre-commit must run piped so the mirror sync job observes formatter output and is skipped on failure"
+    "lefthook pre-commit must run piped so a failing formatter skips the remaining jobs"
   );
-  const lastJob = preCommitJobs.at(-1);
-  assert(
-    lastJob?.name === "sync-agent-surfaces",
-    "lefthook pre-commit must end with the sync-agent-surfaces job so mirrors regenerate after every stage_fixed formatter"
-  );
-  const syncRun = String(lastJob?.run ?? "");
-  assert(
-    syncRun.includes("npm run sync:llm"),
-    "sync-agent-surfaces must regenerate mirrors through npm run sync:llm"
-  );
-  assert(
-    syncRun.includes(expectedMirrorAddCommand()),
-    `sync-agent-surfaces must stage exactly the generator-owned output trees: ${expectedMirrorAddCommand()}`
-  );
-  assert(
-    syncRun.includes("git diff --quiet -- .claude docs scripts/skills"),
-    "sync-agent-surfaces must refuse to regenerate while agent-surface source paths carry unstaged edits"
-  );
-  assert(
-    syncRun.includes("git ls-files --others --exclude-standard -- .claude docs scripts/skills"),
-    "sync-agent-surfaces must refuse to regenerate while agent-surface source paths carry untracked files"
-  );
-  for (const job of preCommitJobs.slice(0, -1)) {
+  for (const job of preCommitJobs) {
     assert(
       job?.stage_fixed === true,
-      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must use stage_fixed so the trailing sync job sees re-staged formatter output`
+      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must use stage_fixed so formatter output reaches the commit`
+    );
+    assert(
+      !String(job?.run ?? "").includes("sync:llm"),
+      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must not run sync:llm; npm run sync:llm is an explicit command owned by guard:agent`
     );
   }
-}
-
-function expectedMirrorAddCommand() {
-  const skillTrees = publicSkillNames.map((name) => `skills/${name}`);
-  return [
-    "git add .agents/skills .codex",
-    ...skillTrees,
-    "agent-bundle/agents",
-    "agent-bundle/claude",
-    "agent-bundle/codex",
-    "agent-bundle/docs",
-    "agent-bundle/skills-manifest.json",
-  ].join(" ");
 }
 
 function assertBiomeLanguageSurface(biome) {
@@ -339,7 +308,22 @@ function assertNoDisabledBiomeRules(value, rulePath = "linter.rules", allowedDis
 
 function assertBiomeOverrides(overrides) {
   const allowedDisabled = new Map([
+    [
+      "services/license-worker/src/cloudflare-workers.d.ts",
+      new Set(["linter.rules.correctness.noUnresolvedImports"]),
+    ],
+    [
+      "services/license-worker/src/worker.ts",
+      new Set(["linter.rules.correctness.noUnresolvedImports"]),
+    ],
     ["src/index.ts", new Set(["linter.rules.performance.noBarrelFile"])],
+  ]);
+  const allowedScopes = new Set([
+    JSON.stringify([
+      "services/license-worker/src/cloudflare-workers.d.ts",
+      "services/license-worker/src/worker.ts",
+    ]),
+    JSON.stringify(["src/index.ts"]),
   ]);
   for (const override of overrides) {
     const includes = override.includes ?? [];
@@ -359,9 +343,8 @@ function assertBiomeOverrides(overrides) {
       "biome.jsonc must inherit Ultracite noExcessiveCognitiveComplexity without a migration cap"
     );
 
-    const isAllowedBarrelOverride = includes.length === 1 && includes[0] === "src/index.ts";
     assert(
-      isAllowedBarrelOverride,
+      allowedScopes.has(JSON.stringify(includes)),
       `biome.jsonc override is not allowed for ${includes.join(", ") || "(none)"}`
     );
   }
@@ -402,6 +385,17 @@ function assertCclspWiring(config) {
   assert(
     javascriptServer.initializationOptions?.tsserver?.path === undefined,
     "cclsp.json must let the TypeScript proxy inject the tsserver path"
+  );
+  const astroServer = config.servers?.find((server) => server.extensions?.includes("astro"));
+  assert(astroServer, "cclsp.json must map .astro files");
+  assert(
+    JSON.stringify(astroServer.command) ===
+      JSON.stringify(["npx", "--no-install", "astro-ls", "--stdio"]),
+    "cclsp.json must run the repository-installed Astro language server"
+  );
+  assert(
+    astroServer.initializationOptions?.typescript?.tsdk === "node_modules/typescript/lib",
+    "cclsp.json must give astro-ls the repository TypeScript SDK"
   );
   for (const server of config.servers ?? []) {
     assert(
@@ -534,11 +528,11 @@ export function check(root = ROOT) {
     "test:matrix:coverage must be the coverage equivalent of test:matrix"
   );
   assert(
-    packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
-    "format:md must run Prettier write over MDX/Markdown/YAML"
+    packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{astro,md,mdx,yml,yaml}"',
+    "format:md must run Prettier write over Astro/MDX/Markdown/YAML"
   );
   assert(
-    packageJson.scripts?.["format:md:check"] === 'prettier --check "**/*.{md,mdx,yml,yaml}"',
+    packageJson.scripts?.["format:md:check"] === 'prettier --check "**/*.{astro,md,mdx,yml,yaml}"',
     "format:md:check must run the read-only Prettier check over the format:md glob"
   );
   assert(!("format:sql" in packageJson.scripts), "SQL formatter lane must not be reintroduced");
@@ -585,6 +579,7 @@ export function check(root = ROOT) {
   for (const token of [
     'embeddedLanguageFormatting: "auto"',
     'endOfLine: "lf"',
+    'plugins: ["prettier-plugin-astro"]',
     "printWidth: 80",
     'proseWrap: "never"',
     "tabWidth: 2",
@@ -604,7 +599,7 @@ export function check(root = ROOT) {
   );
   assert(
     biome.files?.includes?.includes("!agent-bundle"),
-    "biome.jsonc must exclude generated agent-bundle files; npm run sync:llm:check owns that mirror"
+    "biome.jsonc must exclude generated agent-bundle files; npm run sync:llm owns that mirror"
   );
   assert(
     biome.linter?.rules?.correctness?.useImportExtensions?.level === "error",

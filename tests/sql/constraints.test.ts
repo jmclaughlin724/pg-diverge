@@ -157,6 +157,26 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     expect(inlineTable?.hash).toBe(alteredTable?.hash);
   });
 
+  it("keeps parenthesized column DEFAULT expressions balanced", async () => {
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app.invites (
+  id uuid PRIMARY KEY,
+  expires_at timestamptz not null default (now() + interval '10 minutes')
+);`,
+      { config: { normalize: "off" }, file: "invites.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const table = extracted.objects.find((object) => object.key === "table:app.invites");
+    expect(table?.metadata.columns).toEqual([
+      expect.objectContaining({ name: "id" }),
+      expect.objectContaining({
+        defaultExpression: "(now() + interval '10 minutes')",
+        name: "expires_at",
+      }),
+    ]);
+  });
+
   it("slices CREATE TABLE elements with PostgreSQL lexical rules", async () => {
     const extracted = await extractObjectsFromSql(
       `CREATE TABLE app.lexical /* comment ( before elements */ (
@@ -204,5 +224,35 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
 
     expect(extracted.objects).toEqual([]);
     expect(extracted.diagnostics.map((item) => item.code)).toContain("SUPA_EXTRACT_UNSUPPORTED");
+  });
+});
+
+describe("constraint type-name canonicalization", () => {
+  const constraintHash = (objects: { hash: string; ref: { kind: string } }[]) =>
+    objects.find((object) => object.ref.kind === "constraint")?.hash;
+
+  it("strips pg_catalog only as a leading qualifier", async () => {
+    const userType = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::app.pg_catalog IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    const bareType = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::app IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    expect(constraintHash(userType.objects)).toBeDefined();
+    expect(constraintHash(userType.objects)).not.toBe(constraintHash(bareType.objects));
+  });
+
+  it("normalizes builtin pg_catalog-qualified types to their unqualified form", async () => {
+    const qualified = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::pg_catalog.int8 IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    const plain = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::int8 IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    expect(constraintHash(qualified.objects)).toBe(constraintHash(plain.objects));
   });
 });

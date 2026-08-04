@@ -53,6 +53,7 @@
     "selectedActions": {
       "github_owned_allowed": true,
       "patterns_allowed": [
+        "astral-sh/setup-uv@*",
         "codecov/codecov-action@*",
         "ossf/scorecard-action@*",
         "oven-sh/setup-bun@*",

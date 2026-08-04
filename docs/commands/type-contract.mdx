@@ -29,22 +29,12 @@ With no flags, `--from` defaults to `git:HEAD` and `--to` to the declarative tre
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Previous schema source. Defaults to `git:HEAD`.
-</ParamField>
-
-<ParamField path="--to" type="source">
-  New schema source. Defaults to the declarative tree.
-</ParamField>
-
-<ParamField path="--reporter" type="text | json | github | sarif">
-  Output format. An unknown value exits `2` with an error.
-</ParamField>
-
-<ParamField path="--enforce" type="boolean">
-  Fail (exit `2`) on a breaking change in the standalone command. The `sync`
-  deploy-safety gate is configured separately by `workflow.type_safety`.
-</ParamField>
+| Name         | Type                            | Description                                                                                                                                       |
+| ------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--from`     | source                          | Previous schema source. Defaults to `git:HEAD`.                                                                                                   |
+| `--to`       | source                          | New schema source. Defaults to the declarative tree.                                                                                              |
+| `--reporter` | text \| json \| github \| sarif | Output format. An unknown value exits `2` with an error.                                                                                          |
+| `--enforce`  | boolean                         | Fail (exit `2`) on a breaking change in the standalone command. The `sync` deploy-safety gate is configured separately by `workflow.type_safety`. |
 
 ## What it flags as breaking
 

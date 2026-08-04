@@ -56,11 +56,13 @@ function validPackage() {
       typescript: "npm:@typescript/typescript6@6.0.2",
     },
     devDependencies: {
+      "@astrojs/language-server": "2.16.13",
       "@biomejs/biome": "2.5.5",
       "@typescript/native": "npm:typescript@7.0.2",
       "@vitest/coverage-v8": "4.1.10",
       cclsp: "0.7.0",
       prettier: "3.9.6",
+      "prettier-plugin-astro": "0.14.1",
       ultracite: "7.9.4",
       vitest: "4.1.10",
     },
@@ -77,8 +79,8 @@ function validPackage() {
       diagrams: "node benchmarks/plot-concepts.js && npm run format -- docs/images/concepts",
       format: "node scripts/format.mjs",
       "format:json": "sort-package-json",
-      "format:md": 'prettier --write "**/*.{md,mdx,yml,yaml}"',
-      "format:md:check": 'prettier --check "**/*.{md,mdx,yml,yaml}"',
+      "format:md": 'prettier --write "**/*.{astro,md,mdx,yml,yaml}"',
+      "format:md:check": 'prettier --check "**/*.{astro,md,mdx,yml,yaml}"',
       "format:sh": "node scripts/format-sh.mjs",
       "format:toml": "node scripts/format-toml.mjs",
       lint: "node scripts/lint.mjs",
@@ -118,6 +120,7 @@ function validFiles() {
           "!benchmarks/results",
           "!.gitnexus",
           "!agent-bundle",
+          "!**/*.astro",
           "!.claude/worktrees",
           "!.claude/skills/code-review/references/workflow-backed-code-review.js",
           "!.claude/skills/deep-research/references/workflow-backed-deep-research.js",
@@ -164,14 +167,29 @@ function validFiles() {
           ],
           extensions: ["mjs", "cjs"],
         },
+        {
+          command: ["npx", "--no-install", "astro-ls", "--stdio"],
+          extensions: ["astro"],
+          initializationOptions: {
+            typescript: { tsdk: "node_modules/typescript/lib" },
+          },
+        },
       ],
     }),
+    ".claude/skills/supaschema/SKILL.md": `---
+name: supaschema
+description: Consumer skill published to the public skills tree.
+metadata:
+  public: true
+---
+`,
     ".gitignore": "",
     "package-lock.json": "{}\n",
     "package.json": `${JSON.stringify(validPackage())}\n`,
     "prettier.config.mjs": `export default {
   embeddedLanguageFormatting: "auto",
   endOfLine: "lf",
+  plugins: ["prettier-plugin-astro"],
   printWidth: 80,
   proseWrap: "never",
   tabWidth: 2,
@@ -191,17 +209,6 @@ function validFiles() {
     - name: prettier
       run: npx --no-install prettier --write {staged_files}
       stage_fixed: true
-    - name: sync-agent-surfaces
-      run: |
-        set -e
-        if ! git diff --quiet -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md; then
-          exit 1
-        fi
-        if [ -n "$(git ls-files --others --exclude-standard -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md)" ]; then
-          exit 1
-        fi
-        npm run sync:llm
-        git add .agents/skills .codex skills/supaschema agent-bundle/agents agent-bundle/claude agent-bundle/codex agent-bundle/docs agent-bundle/skills-manifest.json
 `,
     "vitest.config.ts": `
 environment: "node"
@@ -326,6 +333,16 @@ describe("tooling stack guard", () => {
       files["biome.jsonc"] = JSON.stringify(biome);
     });
     expect(() => check(root)).toThrow("biome.jsonc must");
+  });
+
+  it("rejects a lefthook pre-commit job that runs the agent-surface sync", () => {
+    const root = fixture((files) => {
+      files["lefthook.yml"] = `${files["lefthook.yml"]}    - name: sync-agent-surfaces
+      run: npm run sync:llm
+      stage_fixed: true
+`;
+    });
+    expect(() => check(root)).toThrow("must not run sync:llm");
   });
 
   it("rejects a broad .claude/skills Biome exclusion", () => {

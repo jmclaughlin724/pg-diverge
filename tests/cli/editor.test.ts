@@ -50,20 +50,10 @@ describe("public agent and editor surfaces", () => {
       ".claude/agents/elegant.md",
       ".claude/skills/elegant/SKILL.md",
       ".codex/agents/elegant.toml",
-      ".codex/config.toml",
     ];
     expect(ignoredFiles(privateAgentFiles)).toEqual([...privateAgentFiles].sort());
     expect(stageableFiles([".agents", ".claude", ".codex"])).toEqual([]);
-    const privateFiles = [
-      ".mcp.json",
-      ".vscode/settings.json",
-      ".vscode/extensions.json",
-      ".codex/config.toml",
-      "fastmcp.json",
-      "pyproject.toml",
-      "uv.lock",
-      "wrangler.toml",
-    ];
+    const privateFiles = [".vscode/settings.json", ".vscode/extensions.json"];
     for (const file of privateFiles) {
       expect(files, file).not.toContain(file);
     }
@@ -78,14 +68,9 @@ describe("public agent and editor surfaces", () => {
     expect(
       files.includes("cclsp.json") || stageableFiles(["cclsp.json"]).includes("cclsp.json")
     ).toBe(true);
-    const privatePrefixes = [
-      "advisor-plans/",
-      "cloudflare/",
-      "scripts/code-atlas/",
-      "scripts/stripe/",
-      "services/agent-mcp/",
-      "services/license-worker/",
-    ];
+    const { heldPrivate: privatePrefixes } = readJson<{ heldPrivate: string[] }>(
+      "scripts/guards/repo-surface/private-paths.json"
+    );
     for (const prefix of privatePrefixes) {
       expect(
         files.some((file) => file.startsWith(prefix)),
@@ -104,14 +89,14 @@ describe("public agent and editor surfaces", () => {
     expect(packageJson.files).not.toEqual(
       expect.arrayContaining([".agents/skills/supaschema", ".claude/rules/supaschema.md"])
     );
-    expect(codexHooks).toContain("supaschema hook generated-migration-edit");
+    expect(codexHooks).toContain("supaschema hook generated-artifact-edit");
     expect(codexHooks).toContain("supaschema hook schema-write");
     expect(codexHooks).not.toContain("general-guard.mjs");
     expect(codexHooks).not.toContain("bash-policy-checks.mjs");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
     expect(codexHooks).not.toContain("sync-llm-on-claude-surface-change.mjs");
-    expect(claudeSettings).toContain("supaschema hook generated-migration-edit");
+    expect(claudeSettings).toContain("supaschema hook generated-artifact-edit");
     expect(claudeSettings).toContain("supaschema hook schema-write");
     expect(claudeSettings).not.toContain("bash-policy-checks.mjs");
     expect(claudeSettings).not.toContain("general-guard.mjs");

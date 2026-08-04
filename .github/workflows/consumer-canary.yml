@@ -1,0 +1,58 @@
+name: Consumer Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Consumer repository (owner/name)
+        required: true
+        default: jmclaughlin724/anilize
+      ref:
+        description: Consumer branch or tag
+        required: true
+        default: main
+      spec:
+        description: supaschema version, dist-tag, or "next"
+        required: true
+        default: next
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consumer-canary-${{ inputs.repo }}-${{ inputs.ref }}
+  queue: max
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Read-only egress: clone the consumer over HTTPS and install from npmjs.
+      # No OIDC, no publish, no write scopes.
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.actions.githubusercontent.com:443 api.github.com:443 github.com:443 registry.npmjs.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci
+      - name: Prepare pnpm for workspace consumers
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.1.2 --activate
+      - name: Run consumer canary
+        env:
+          CONSUMER_CANARY_TOKEN: ${{ secrets.CONSUMER_CANARY_TOKEN }}
+          CANARY_REPO: ${{ inputs.repo }}
+          CANARY_REF: ${{ inputs.ref }}
+          CANARY_SPEC: ${{ inputs.spec }}
+        run: >-
+          node scripts/release/consumer-canary.mjs --repo "$CANARY_REPO" --ref "$CANARY_REF" --spec "$CANARY_SPEC"

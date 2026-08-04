@@ -8,13 +8,17 @@ const ROOT = process.cwd();
 const packageJson = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const packageName = packageJson.name;
 const packageVersion = packageJson.version;
-const spec = `${packageName}@${packageVersion}`;
+const spec = process.env.SUPASCHEMA_REGISTRY_SMOKE_SPEC ?? `${packageName}@${packageVersion}`;
 const nodeBinDir = dirname(process.execPath);
 const pnpmTool = "pnpm@11.1.2";
 const bunTool = "bun@1.3.14";
 const commandTimeoutMs = 300_000;
 const installAttempts = positiveIntegerEnv("SUPASCHEMA_REGISTRY_SMOKE_INSTALL_ATTEMPTS", 12);
 const installRetryDelayMs = positiveIntegerEnv("SUPASCHEMA_REGISTRY_SMOKE_RETRY_DELAY_MS", 5000);
+const expectedVersion =
+  process.env.SUPASCHEMA_REGISTRY_SMOKE_SPEC === undefined
+    ? packageVersion
+    : resolveSpecVersionWithRetry(spec);
 
 if (typeof packageName !== "string" || packageName.length === 0) {
   fail("package.json must include a package name");
@@ -79,9 +83,38 @@ function smokeBun() {
 function assertVersion(runner, cwd) {
   const output = runner(["--version"], cwd).trim();
   const version = lastNonEmptyLine(output);
-  if (version !== packageVersion) {
-    fail(`expected ${packageName} ${packageVersion}, got ${output}`);
+  if (version !== expectedVersion) {
+    fail(`expected ${packageName} ${expectedVersion}, got ${output}`);
   }
+}
+
+function resolveSpecVersionWithRetry(spec) {
+  let lastError;
+  for (let attempt = 1; attempt <= installAttempts; attempt += 1) {
+    try {
+      const output = execFileSync("npm", ["view", spec, "version"], {
+        cwd: ROOT,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+      const version = lastNonEmptyLine(output);
+      if (version.length > 0) {
+        return version;
+      }
+      lastError = new Error(`npm view returned no version for ${spec}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < installAttempts) {
+      console.error(
+        `REGISTRY_SMOKE_RETRY npm view ${spec} attempt=${attempt} nextAttempt=${attempt + 1} delayMs=${installRetryDelayMs}`
+      );
+      sleep(installRetryDelayMs);
+    }
+  }
+  fail(
+    `npm view could not resolve a version for ${spec} after ${installAttempts} attempts\n${String(lastError?.message ?? lastError)}`
+  );
 }
 
 function lastNonEmptyLine(output) {

@@ -24,17 +24,13 @@ benchmarks/results
 .local/
 .private/
 
-# Private maintainer planning, operator, MCP, and deployment surfaces.
+# Business-sensitive maintainer surfaces held private (tracked=public; publish
+# decision pending). Wired maintainer tooling (agent-mcp, cloudflare worker,
+# python/fastmcp/mcp configs) is tracked — tracked files must never reference
+# gitignored paths (enforced by the repo-surface guard).
 advisor-plans/
 .planning/
-.github/workflows/python.yml
-.mcp.json
 .vscode/
-fastmcp.json
-services/agent-mcp/
-services/license-worker/
-scripts/code-atlas/
-scripts/stripe/
 !scripts/agent-hooks/
 !scripts/agent-hooks/*.mjs
 .agents/*
@@ -73,7 +69,7 @@ scripts/stripe/
 !.claude/skills/supaschema-migrate/**
 .codex/*
 .codex/agents/
-.codex/config.toml
+!.codex/config.toml
 !.codex/hooks.json
 !.codex/hooks/
 .codex/hooks/*
@@ -87,7 +83,3 @@ scripts/stripe/
 !.codex/rules/
 .codex/rules/*
 !.codex/rules/*.rules
-wrangler.toml
-cloudflare/
-pyproject.toml
-uv.lock

@@ -1,4 +1,16 @@
-export const diagnosticCatalog: Record<string, string> = {
+export interface DiagnosticDefinition {
+  cause?: string;
+  commands?: readonly string[];
+  docs?: string;
+  expectedEvidence?: readonly string[];
+  forbiddenActions?: readonly string[];
+  recoverySteps?: readonly string[];
+  summary: string;
+}
+
+const diagnosticSummaries: Record<string, string> = {
+  SUPA_BUILD_STALE_DIST:
+    "The compiled dist is older than src in a repository checkout; rebuild before trusting CLI behavior.",
   SUPA_CATALOG_EXTRACT_FAILED: "Live catalog extraction failed; check the database URL and role.",
   SUPA_CATALOG_SNAPSHOT_VERSION:
     "The catalog snapshot was produced by a different supaschema model version; hashes may not be comparable.",
@@ -79,6 +91,10 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED:
     "Side-effect statements are not schema objects; keep them in reviewed migrations.",
   SUPA_EXTRACT_UNSUPPORTED: "Unsupported or ambiguous DDL; extend support or hand-author it.",
+  SUPA_GENERATED_ARTIFACT_EDIT:
+    "A write targeted a generated migration or configured TypeScript/Zod contract output.",
+  SUPA_GENERATED_ARTIFACT_GUARD_FAILED:
+    "The generated-artifact hook could not classify a write and denied it.",
   SUPA_INTAKE_MALFORMED:
     "Customer-supplied intake payload is not a JSON object or exceeds the nesting limit; submit a well-formed object.",
   SUPA_INTAKE_MISSING_SCOPE:
@@ -89,8 +105,10 @@ export const diagnosticCatalog: Record<string, string> = {
     "Generated migration-tree lineage was produced by a different model format, so old and current fingerprints are not directly comparable. Review the generated migration normally; same-format mismatches still block.",
   SUPA_MIGRATION_BASELINE_MISMATCH:
     "The resolved before-state source does not match the generated migration-tree baseline. Recover by regenerating from the source state that produced the baseline, using diff --replace for a generated migration replacement, or — when the pending generated migration's end-state was never committed and no target records it as applied — reviewing and deleting that pending migration, then regenerating from the current tree.",
+  SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED:
+    "The selected snapshot cannot prove a migration corpus with no generated lineage or a hand-authored tail; replay the configured migration corpus as the before-state.",
   SUPA_MIGRATION_BASELINE_UNSUPPORTED:
-    "The selected before-state does not match the configured migration corpus, or existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
+    "The selected migrations: before-state does not resolve to the configured migration corpus.",
   SUPA_MIGRATION_CORPUS_PARSE_SKIPPED:
     "A historical migration could not be parsed for source-intent extraction.",
   SUPA_MIGRATIONS_GHOST_VERSIONS:
@@ -214,6 +232,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_SYNC_TARGET_URL_UNRESOLVED: "The selected sync target's database URL could not be resolved.",
   SUPA_SYNC_VERIFY_URL_UNRESOLVED:
     "Sync could not resolve the disposable database URL required to verify pending migrations before apply.",
+  SUPA_TYPES_CONTRACT_DRIFT:
+    "A generated TypeScript/Zod contract does not match regenerated output; run supaschema types to refresh it.",
   SUPA_VALIDATOR_FAILED: "A configured external validator reported diagnostics.",
   SUPA_VALIDATOR_UNAVAILABLE: "A configured external validator is not installed.",
   SUPA_VALIDATOR_UNKNOWN: "Unknown validator name in the validators config.",
@@ -230,3 +250,181 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_VERIFY_STUB_REFERENCE:
     "Verify failed referencing a managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Confirm by applying the migration to a real disposable database that provisions the managed surface. Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.",
 };
+
+const diagnosticDefinitionOverrides: Record<string, Omit<DiagnosticDefinition, "summary">> = {
+  SUPA_BUILD_STALE_DIST: {
+    cause:
+      "A repository checkout ran the compiled CLI from dist while src contained newer edits, so the executed behavior did not include the latest source. This only fires in a checkout layout; installed packages ship no src directory.",
+    commands: ["npm run build", "supaschema doctor"],
+    docs: "docs/commands/doctor.mdx",
+    expectedEvidence: [
+      "doctor build identity reports a built timestamp newer than the latest src edit",
+      "the warning disappears on the next CLI run after a rebuild",
+    ],
+    forbiddenActions: [
+      "do not suppress the warning to keep testing against a stale dist",
+      "do not treat stale-dist behavior as evidence of a source regression",
+    ],
+    recoverySteps: [
+      "Run npm run build in the repository checkout.",
+      "Re-run the CLI command and confirm doctor build identity reflects the rebuild.",
+    ],
+  },
+  SUPA_TYPES_CONTRACT_DRIFT: {
+    cause:
+      "types --check regenerated the configured TypeScript/Zod contracts and found the on-disk outputs missing or different. Generated contracts are projections of the schema source; the header fingerprint identifies the model the file was generated from.",
+    commands: ["supaschema types", "supaschema types --check"],
+    docs: "docs/commands/types.mdx",
+    expectedEvidence: [
+      "types --check exits 0 after a refresh",
+      "the reviewed generated diff contains only explained changes",
+    ],
+    forbiddenActions: [
+      "do not manually edit generated TypeScript or Zod contracts to silence drift",
+      "do not commit application casts or aliases that hide contract drift",
+    ],
+    recoverySteps: [
+      "Confirm the schema source matches the intended state with supaschema doctor.",
+      "Run supaschema types and review the generated diff.",
+      "Commit the refreshed contracts together with the owning schema change.",
+    ],
+  },
+  SUPA_CATALOG_EXTRACT_FAILED: {
+    cause:
+      "Catalog SQL failed before Supaschema could build a live model. Typical causes are an unreachable URL, insufficient pg_catalog visibility, or a configured schema boundary that was not applied at query time.",
+    commands: [
+      "supaschema doctor --database-url <local-database-url>",
+      "supaschema selfcheck --database-url <local-database-url>",
+    ],
+    docs: "docs/concepts/sources.mdx",
+    expectedEvidence: [
+      "doctor reports catalog extraction with an object count and fingerprint",
+      "selfcheck reports zero parity mismatches",
+    ],
+    forbiddenActions: [
+      "do not remove excluded schema boundaries to make ACL extraction pass",
+      "do not patch an empty catalog snapshot or generated contracts",
+    ],
+    recoverySteps: [
+      "Confirm the selected URL and role with doctor.",
+      "Keep schemas.include and schemas.exclude in the canonical config; catalog queries apply them before ACL expansion.",
+      "Resolve the first catalog diagnostic, then run selfcheck.",
+    ],
+  },
+  SUPA_GENERATED_ARTIFACT_EDIT: {
+    cause:
+      "Generated migrations and configured TypeScript/Zod outputs are projections of declarative SQL, generator configuration, and the proven migration baseline.",
+    commands: ["supaschema doctor", "supaschema sync", "supaschema types"],
+    docs: "docs/coding-agents/agent-bundle.mdx",
+    expectedEvidence: [
+      "migration replay and catalog/source checks are healthy",
+      "the generator rewrites the artifact from canonical sources",
+      "the reviewed generated diff contains only explained changes",
+    ],
+    forbiddenActions: [
+      "do not manually edit generated TypeScript or Zod contracts",
+      "do not manually edit a Supaschema-generated migration",
+      "do not discard unexplained generated drift",
+    ],
+    recoverySteps: [
+      "Change declarative schema SQL or generator configuration at its canonical owner.",
+      "Run doctor and resolve migration replay, catalog, or selfcheck diagnostics.",
+      "Run supaschema sync for the complete migration/type closure, or supaschema types only when schema sources already match the intended database state.",
+      "Review the generated diff before keeping it.",
+    ],
+  },
+  SUPA_GENERATED_ARTIFACT_GUARD_FAILED: {
+    cause:
+      "The hook payload was malformed, the Supaschema config could not be read or validated, or another classifier prerequisite failed before the target could be proven safe.",
+    commands: ["supaschema config validate", "supaschema doctor"],
+    docs: "docs/coding-agents/agent-bundle.mdx",
+    expectedEvidence: [
+      "config validation succeeds",
+      "doctor identifies the configured generated outputs and reports healthy source/replay checks",
+      "the retried hook returns an explicit allow or generated-artifact denial",
+    ],
+    forbiddenActions: [
+      "do not bypass or unregister the generated-artifact hook",
+      "do not manually edit generated migrations or TypeScript/Zod contracts",
+      "do not treat a classifier failure as permission to write",
+    ],
+    recoverySteps: [
+      "Run config validate and repair the first reported config error.",
+      "Run doctor and resolve source, replay, or configured-output diagnostics.",
+      "Retry the original tool operation after the hook can classify its target.",
+    ],
+  },
+  SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED: {
+    cause:
+      "Generated lineage is absent or a later hand-authored migration changed the state, so Git or another snapshot cannot prove the migration corpus tip.",
+    commands: [
+      "supaschema doctor",
+      "supaschema diff --from migrations:<migrationsDir> --to dir:<schemaPath> --out stdout",
+    ],
+    docs: "docs/concepts/sources.mdx",
+    expectedEvidence: [
+      "doctor reports a successful migration replay object count and fingerprint",
+      "sources.from:auto selects migrations:<migrationsDir>",
+      "the next generated migration records a new format-versioned lineage edge",
+    ],
+    forbiddenActions: [
+      "do not select empty: or an unrelated Git ref to bypass replay",
+      "do not edit generated migrations or generated types to match the failing output",
+      "do not apply remote DDL while repairing the local baseline",
+    ],
+    recoverySteps: [
+      "Read the first replay diagnostic and its migration file.",
+      "Make historical SQL replayable without changing already-applied intent, or supply the missing historical object/order statement.",
+      "Rerun doctor; auto will select the configured migrations corpus.",
+      "Generate and verify the next forward migration locally.",
+    ],
+  },
+  SUPA_REPLAY_ORDER_GAP: {
+    cause:
+      "A migration ALTER or DROP references an object that the ordered migration prefix has not created, or a duplicate CREATE lacks an idempotency guard.",
+    commands: ["supaschema doctor", "supaschema explain SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED"],
+    expectedEvidence: [
+      "migration replay reaches the corpus tip without an order gap",
+      "doctor reports the replay fingerprint",
+    ],
+    forbiddenActions: [
+      "do not suppress the missing object with generated-type edits",
+      "do not fall back to Git when the migration corpus is the required baseline",
+    ],
+    recoverySteps: [
+      "Inspect the named migration and the earlier files that should establish its target.",
+      "Restore the missing historical DDL or correct an unapplied migration's ordering/idempotency.",
+      "Rerun doctor and the original generation command.",
+    ],
+  },
+  SUPA_REPLAY_UNSUPPORTED: {
+    cause:
+      "A historical statement parses but has no lossless replay transition in the semantic model.",
+    commands: ["supaschema doctor", "supaschema explain SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED"],
+    expectedEvidence: [
+      "the statement has a parser-backed replay implementation and focused regression test",
+      "migration replay and a second extraction converge",
+    ],
+    forbiddenActions: [
+      "do not classify SQL semantics with regular expressions",
+      "do not silently ignore the statement or patch generated artifacts",
+    ],
+    recoverySteps: [
+      "Inspect the PostgreSQL AST for the named statement.",
+      "Implement the transition in the shared source/replay/catalog semantic owner.",
+      "Add source, replay, render, and catalog parity tests as applicable.",
+      "Rerun doctor and selfcheck.",
+    ],
+  },
+};
+
+export const diagnosticDefinitions: Record<string, DiagnosticDefinition> = Object.fromEntries(
+  Object.entries(diagnosticSummaries).map(([code, summary]) => [
+    code,
+    { summary, ...diagnosticDefinitionOverrides[code] },
+  ])
+);
+
+export const diagnosticCatalog: Record<string, string> = Object.fromEntries(
+  Object.entries(diagnosticDefinitions).map(([code, definition]) => [code, definition.summary])
+);

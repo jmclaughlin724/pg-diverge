@@ -24,7 +24,7 @@ import {
 const SHOULD_CREATE_GITHUB_RELEASE_IF =
   "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'";
 
-function assertWorkflowBasics(parsed) {
+function assertWorkflowBasics(parsed, allowedActionPatterns) {
   for (const [file, { doc, raw }] of parsed) {
     assert(
       permissionsAreReadOnly(doc?.permissions),
@@ -48,6 +48,12 @@ function assertWorkflowBasics(parsed) {
       assert(
         isSha40(ref),
         `${file}: \`uses: ${uses}\` must pin a full 40-character commit SHA (got "${ref}")`
+      );
+      assert(
+        action.startsWith("actions/") ||
+          action.startsWith("github/") ||
+          allowedActionPatterns.has(`${action}@*`),
+        `${file}: third-party action ${action} must be allowlisted in .github/repo-policy.json selectedActions.patterns_allowed`
       );
       if (action === "actions/checkout") {
         assert(
@@ -286,6 +292,127 @@ function assertReleaseYaml(parsed) {
   );
 }
 
+function assertSnapshotYaml(parsed) {
+  const snapshot = parsed.get("snapshot.yml");
+  assert(snapshot, "snapshot.yml must exist");
+  const snapshotOn = snapshot.doc?.on ?? {};
+  assert(
+    !(snapshotOn.release || snapshotOn.workflow_run),
+    "snapshot.yml must publish only from protected main pushes, not release events or workflow_run"
+  );
+  assert(
+    asArray(snapshotOn.push?.branches).includes("main"),
+    "snapshot.yml push trigger must be scoped to main"
+  );
+  assert(
+    snapshot.doc?.concurrency?.group === "snapshot-npm" &&
+      snapshot.doc.concurrency.queue === "max" &&
+      snapshot.doc.concurrency["cancel-in-progress"] !== true,
+    "snapshot.yml must queue snapshot publishes with concurrency group snapshot-npm and queue: max"
+  );
+  const publishJob = Object.values(snapshot.doc?.jobs ?? {}).find(
+    (job) =>
+      job?.permissions &&
+      typeof job.permissions === "object" &&
+      job.permissions["id-token"] === "write"
+  );
+  assert(
+    publishJob,
+    "snapshot.yml must have a publish job with id-token: write (OIDC trusted publishing)"
+  );
+  assert(
+    publishJob.environment === "release",
+    "snapshot.yml publish job must run in the release environment so OIDC stays main-gated"
+  );
+  assert(
+    publishJob.permissions?.contents === "read",
+    "snapshot.yml publish job must not grant contents: write; snapshots create no releases or tags"
+  );
+  assert(
+    (publishJob.steps ?? []).some(
+      (step) =>
+        typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
+    ),
+    "snapshot.yml publish job must run step-security/harden-runner"
+  );
+  const steps = publishJob.steps ?? [];
+  const stampIndex = steps.findIndex((step) =>
+    String(step?.run ?? "").includes("node scripts/release/snapshot-version.mjs")
+  );
+  const buildIndex = steps.findIndex((step) => String(step?.run ?? "").includes("npm run build"));
+  assert(
+    stampIndex >= 0 && buildIndex > stampIndex,
+    "snapshot.yml must stamp the snapshot version before npm run build so dist/build-info.json carries it"
+  );
+  assert(
+    snapshot.raw.includes("--tag next"),
+    "snapshot.yml must publish with explicit `npm publish --tag next`"
+  );
+  assert(
+    !snapshot.raw.includes("--tag latest"),
+    "snapshot.yml must never publish to the latest dist-tag"
+  );
+  assert(
+    !snapshot.raw.includes("node scripts/release/preflight.mjs"),
+    "snapshot.yml must bypass the stable-release preflight; snapshots carry no changelog entry"
+  );
+  assert(
+    !snapshot.raw.includes("gh release create"),
+    "snapshot.yml must not create GitHub Releases or tags"
+  );
+  const registrySmokeStep = steps.find((step) =>
+    String(step?.run ?? "").includes("node scripts/release/registry-smoke.mjs")
+  );
+  const immutableSnapshotSpec = ["supaschema@$", "{{ steps.snapshot.outputs.version }}"].join("");
+  assert(
+    registrySmokeStep?.env?.SUPASCHEMA_REGISTRY_SMOKE_SPEC === immutableSnapshotSpec,
+    "snapshot.yml must registry-smoke the immutable version emitted by the stamp step"
+  );
+  assert(
+    (publishJob.steps ?? []).some((step) => stepActionName(step) === "actions/attest"),
+    "snapshot.yml must use actions/attest@v4 for tarball provenance attestation"
+  );
+}
+
+function assertConsumerCanaryYaml(parsed) {
+  const canary = parsed.get("consumer-canary.yml");
+  assert(canary, "consumer-canary.yml must exist");
+  const canaryOn = canary.doc?.on ?? {};
+  assert(
+    canaryOn.workflow_dispatch !== undefined &&
+      canaryOn.push === undefined &&
+      canaryOn.pull_request === undefined &&
+      canaryOn.schedule === undefined &&
+      canaryOn.workflow_run === undefined,
+    "consumer-canary.yml must run on workflow_dispatch only; canaries never gate or auto-run"
+  );
+  const canaryJob = Object.values(canary.doc?.jobs ?? {})[0];
+  assert(canaryJob, "consumer-canary.yml must define a canary job");
+  assert(
+    !canaryJob.permissions || permissionsAreReadOnly(canaryJob.permissions),
+    "consumer-canary.yml job must not elevate the read-only workflow token"
+  );
+  assert(
+    !JSON.stringify(canaryJob.permissions ?? {}).includes("id-token"),
+    "consumer-canary.yml must not request OIDC; canaries never publish"
+  );
+  assert(
+    (canaryJob.steps ?? []).some(
+      (step) =>
+        typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
+    ),
+    "consumer-canary.yml must run step-security/harden-runner"
+  );
+  assert(
+    canary.raw.includes("secrets.CONSUMER_CANARY_TOKEN"),
+    "consumer-canary.yml must read the consumer clone token from secrets.CONSUMER_CANARY_TOKEN"
+  );
+  assert(
+    canary.raw.includes("node scripts/release/consumer-canary.mjs"),
+    "consumer-canary.yml must run the consumer-canary script"
+  );
+}
+
 function assertConsumerPackageSmokeSteps(qualitySteps) {
   const preparePackageManagersStep = findNamedStep(
     qualitySteps,
@@ -337,10 +464,13 @@ export function check(root = ROOT) {
   const files = workflowFiles(root);
   const expectedWorkflowFiles = [
     "ci.yml",
+    "consumer-canary.yml",
     "dependency-review.yml",
     "docs.yml",
+    "python.yml",
     "release.yml",
     "scorecard.yml",
+    "snapshot.yml",
   ];
   assert(
     JSON.stringify(files) === JSON.stringify(expectedWorkflowFiles),
@@ -353,8 +483,11 @@ export function check(root = ROOT) {
     parsed.set(file, { doc: parseYaml(raw), raw });
   }
   const packageJson = readJson("package.json", root);
+  const allowedActionPatterns = new Set(
+    readJson(".github/repo-policy.json", root).actions?.selectedActions?.patterns_allowed ?? []
+  );
 
-  assertWorkflowBasics(parsed);
+  assertWorkflowBasics(parsed, allowedActionPatterns);
 
   for (const file of ["ci.yml", "dependency-review.yml", "docs.yml"]) {
     const doc = parsed.get(file)?.doc;
@@ -370,6 +503,8 @@ export function check(root = ROOT) {
   );
 
   assertReleaseYaml(parsed);
+  assertSnapshotYaml(parsed);
+  assertConsumerCanaryYaml(parsed);
 
   const ci = parsed.get("ci.yml")?.doc;
   assert(ci, "ci.yml must exist");
@@ -459,42 +594,13 @@ export function check(root = ROOT) {
     "dependency-review.yml must remain read-only and must not request PR comment writes"
   );
   assert(
-    typeof dependencyReviewStep.with?.["allow-licenses"] === "string" &&
-      !("deny-licenses" in (dependencyReviewStep.with ?? {})),
-    "dependency-review.yml must use an explicit license allow-list, not deprecated deny-licenses"
+    !(
+      "allow-licenses" in (dependencyReviewStep.with ?? {}) ||
+      "deny-licenses" in (dependencyReviewStep.with ?? {}) ||
+      "allow-dependencies-licenses" in (dependencyReviewStep.with ?? {})
+    ),
+    "dependency-review.yml must stay vulnerability-only; the license allow-list was retired as metadata noise"
   );
-  const licenseExclusions = new Set(
-    String(dependencyReviewStep.with?.["allow-dependencies-licenses"] ?? "")
-      .split(",")
-      .map((packageUrl) => packageUrl.trim())
-      .filter(Boolean)
-  );
-  const expectedLicenseExclusions = new Map([
-    ["spawndamnit", "SEE LICENSE IN LICENSE"],
-    ["@postgres-language-server/cli", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-aarch64-apple-darwin", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-aarch64-linux-gnu", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-aarch64-windows-msvc", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-apple-darwin", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-linux-gnu", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-linux-musl", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-windows-msvc", "MIT or Apache-2.0"],
-  ]);
-  assert(
-    licenseExclusions.size === expectedLicenseExclusions.size,
-    "dependency-review.yml license exclusions must contain only packages with current invalid metadata"
-  );
-  const packageLock = readJson("package-lock.json", root);
-  for (const [packageName, expectedLicense] of expectedLicenseExclusions) {
-    assert(
-      licenseExclusions.has(`pkg:npm/${packageName}`),
-      `dependency-review.yml must exclude the current invalid license metadata for ${packageName}`
-    );
-    assert(
-      packageLock.packages?.[`node_modules/${packageName}`]?.license === expectedLicense,
-      `dependency-review.yml license exclusion for ${packageName} must be removed or updated when its lockfile metadata changes`
-    );
-  }
 
   const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
   assert(
@@ -537,7 +643,7 @@ export function check(root = ROOT) {
     "ci.yml check-os must use npm run test:matrix so examples failures stay in quality"
   );
 
-  assert(!files.includes("python.yml"), "python.yml must stay private with the agent MCP service");
+  assert(files.includes("python.yml"), "python.yml must stay tracked with the agent MCP service");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

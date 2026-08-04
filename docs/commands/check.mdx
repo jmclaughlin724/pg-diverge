@@ -34,39 +34,22 @@ Use `--changed` for local working-tree checks, `--staged` for pre-commit checks,
 
 ## Input
 
-<ParamField path="[migrations...]" type="file | -">
-  Migration files to check. Use `-` to read SQL from stdin.
-</ParamField>
+| Name              | Type      | Description                                               |
+| ----------------- | --------- | --------------------------------------------------------- |
+| `[migrations...]` | file \| - | Migration files to check. Use `-` to read SQL from stdin. |
 
 Explicit directory arguments are not expanded. Use a shell glob such as `database/migrations/*.sql`.
 
 ## Flags
 
-<ParamField path="--reporter" type="text | github | sarif | json">
-  Choose human text, GitHub workflow annotations, SARIF, or JSON.
-</ParamField>
-
-<ParamField path="--allow-empty" type="boolean">
-  Treat an empty `config.migrationsDir` as success for setup probes.
-</ParamField>
-
-<ParamField path="--changed" type="boolean">
-  Check migration SQL changed in the working tree or index. This includes
-  untracked migration files.
-</ParamField>
-
-<ParamField path="--staged" type="boolean">
-  Check staged migration SQL only.
-</ParamField>
-
-<ParamField path="--base" type="git ref">
-  Check migration SQL returned by `git diff <ref> --name-only --diff-filter=ACMR`.
-</ParamField>
-
-<ParamField path="--since" type="git ref">
-  Alias the same git diff selection as `--base`, for CI and hook vocabulary that
-  names a since-ref.
-</ParamField>
+| Name            | Type                            | Description                                                                                        |
+| --------------- | ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `--reporter`    | text \| github \| sarif \| json | Choose human text, GitHub workflow annotations, SARIF, or JSON.                                    |
+| `--allow-empty` | boolean                         | Treat an empty `config.migrationsDir` as success for setup probes.                                 |
+| `--changed`     | boolean                         | Check migration SQL changed in the working tree or index. This includes untracked migration files. |
+| `--staged`      | boolean                         | Check staged migration SQL only.                                                                   |
+| `--base`        | git ref                         | Check migration SQL returned by `git diff <ref> --name-only --diff-filter=ACMR`.                   |
+| `--since`       | git ref                         | Alias the same git diff selection as `--base`, for CI and hook vocabulary that names a since-ref.  |
 
 Use only one of `--changed`, `--staged`, `--base`, or `--since`. These flags cannot be combined with explicit migration file arguments.
 

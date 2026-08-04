@@ -1,2317 +1,727 @@
-import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import fs, {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
+import {
+  classifyCommandDomains,
+  classifyCommandOutcomeDomains,
+} from "../../scripts/agent-hooks/command-evidence.mjs";
+import { shapeHookResult } from "../../scripts/agent-hooks/hook-output.mjs";
+import { claimedVerificationDomains } from "../../scripts/agent-hooks/response-claims.mjs";
+import { handleAgentHookEvent } from "../../scripts/agent-hooks/runner.mjs";
+import { handleSessionLifecycleEvent } from "../../scripts/agent-hooks/session-lifecycle.mjs";
+import { parseShellCommand } from "../../scripts/agent-hooks/shell-command.mjs";
+import {
+  inspectSessionState,
+  normalizeState,
+  readSessionState,
+  refreshSessionState,
+  sessionStatePath,
+  withSessionState,
+} from "../../scripts/agent-hooks/state.mjs";
+import { isCanonicalAgentSurfaceSource } from "../../scripts/skills/agent-surface-manifest.mjs";
 
-const hasAgentHookSources = [
-  "scripts/agent-hooks/command-evidence.mjs",
-  "scripts/agent-hooks/evidence-gate.mjs",
-  "scripts/agent-hooks/hook-output.mjs",
-  "scripts/agent-hooks/response-claims.mjs",
-  "scripts/agent-hooks/response-shape.mjs",
-  "scripts/agent-hooks/runner.mjs",
-  "scripts/agent-hooks/state.mjs",
-].every((file) => existsSync(join(process.cwd(), file)));
-let runChecks: any;
-let shapeHookResult: any;
-let handleAgentHookEvent: any;
-let hedgeDensity: any;
-let preToolEvidenceGate: any;
-let claimedVerificationDomains: any;
-let correctionsFor: any;
-let currentTurnState: any;
-let normalizeState: any;
-let readSessionState: any;
-let sessionStatePath: any;
-let setCorrections: any;
-let transcriptEvidence: any;
+const repositoryRoot = process.cwd();
+const originalStateDir = process.env.STATE_DIR;
 
-function optionalImport(specifier: string): Promise<any> {
-  return import(specifier);
-}
-
-if (hasAgentHookSources) {
-  ({ runChecks, shapeHookResult } = await optionalImport(
-    "../../scripts/agent-hooks/hook-output.mjs"
-  ));
-  ({ handleAgentHookEvent } = await optionalImport("../../scripts/agent-hooks/runner.mjs"));
-  ({ hedgeDensity } = await optionalImport("../../scripts/agent-hooks/response-shape.mjs"));
-  ({ preToolEvidenceGate } = await optionalImport("../../scripts/agent-hooks/evidence-gate.mjs"));
-  ({ claimedVerificationDomains } = await optionalImport(
-    "../../scripts/agent-hooks/response-claims.mjs"
-  ));
-  ({ transcriptEvidence } = await optionalImport("../../scripts/agent-hooks/command-evidence.mjs"));
-  ({
-    correctionsFor,
-    currentTurnState,
-    normalizeState,
-    readSessionState,
-    sessionStatePath,
-    setCorrections,
-  } = await optionalImport("../../scripts/agent-hooks/state.mjs"));
-}
-
-interface HookFeedback {
-  permissionDecisionReason?: string;
-}
-
-function hookFeedback(value: unknown): HookFeedback {
-  if (!(isRecord(value) && isRecord(value.hookSpecificOutput))) {
-    return {};
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (originalStateDir === undefined) {
+    delete process.env.STATE_DIR;
+  } else {
+    process.env.STATE_DIR = originalStateDir;
   }
-  return {
-    permissionDecisionReason: stringValue(value.hookSpecificOutput.permissionDecisionReason),
-  };
-}
+});
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
-  it("pins model-context output shapes by event", () => {
-    for (const eventName of [
-      "SessionStart",
-      "UserPromptSubmit",
-      "PreToolUse",
-      "PostToolUse",
-      "PostToolUseFailure",
-      "SubagentStart",
-    ]) {
-      expect(shapeHookResult(eventName, { contextParts: ["ctx"] }).output).toMatchObject({
-        hookSpecificOutput: {
-          additionalContext: "ctx",
-          hookEventName: eventName,
-        },
-      });
-    }
-    expect(shapeHookResult("Stop", { contextParts: ["ctx"] }).output).toEqual({});
-    expect(shapeHookResult("SubagentStop", { contextParts: ["ctx"] }).output).toEqual({});
-  });
-
-  it("pins blocking and denial shapes by event", () => {
-    expect(shapeHookResult("PreToolUse", { deny: "no" }).output).toMatchObject({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: "no",
-      },
-    });
-    expect(shapeHookResult("TaskCompleted", { block: "not done" })).toMatchObject({
-      exitCode: 2,
-      stderr: "not done",
-    });
-    expect(shapeHookResult("Stop", { block: "revise" }).output).toMatchObject({
-      decision: "block",
-      reason: "revise",
-    });
-    expect(shapeHookResult("Stop", {}, "codex").stdout).toBe("{}\n");
-    expect(shapeHookResult("SessionEnd", {}).stdout).toBe("");
-  });
-
-  it("formats thrown checks as fail-closed hook feedback", () => {
-    const result = runChecks(
-      "PreToolUse",
-      {},
-      [
-        function explodingCheck() {
-          throw new Error("boom");
-        },
-      ],
-      {
-        hookPath: "/workspace/.codex/hooks/context-pre-tool-use.mjs",
-        runtime: "codex",
-      }
+describe("parser-backed command and edit analysis", () => {
+  it("uses a shell AST for quoting, pipelines, substitutions, and glob expansion", () => {
+    const analysis = parseShellCommand(
+      "TOKEN='literal value' psql -c 'select 1' | tee output.txt; rm -rf $TARGET"
     );
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
 
-    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
-    expect(shaped.permissionDecisionReason).toContain("runtime=codex");
-    expect(shaped.permissionDecisionReason).toContain(
-      "hook=/workspace/.codex/hooks/context-pre-tool-use.mjs"
-    );
-    expect(shaped.permissionDecisionReason).toContain("check=explodingCheck");
-    expect(shaped.permissionDecisionReason).toContain("source=");
-    expect(shaped.permissionDecisionReason).toContain("agent-hook-core.test.ts:");
-    expect(shaped.permissionDecisionReason).toContain("error=boom");
-    expect(shaped.permissionDecisionReason).toContain("remediation=");
-    expect(shaped.permissionDecisionReason).not.toContain("stack=");
-  });
-
-  it("fails closed without overwriting corrupted session state", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-corrupt-state-"));
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: "corrupt-session" };
-    const file = sessionStatePath(payload);
-    await writeFile(file, "{not-json");
-
-    const result = handleAgentHookEvent("SessionStart", payload, {
-      hookPath: "/workspace/.codex/hooks/context-session-start.mjs",
-      runtime: "codex",
-    });
-
-    expect(result.output.systemMessage).toContain("Agent hook failed closed.");
-    expect(result.output.systemMessage).toContain("check=sessionState");
-    expect(result.output.systemMessage).toContain("runtime=codex");
-    expect(result.output.systemMessage).toContain("error=could not read hook state");
-    expect(result.output.systemMessage).toContain("invalid JSON");
-    expect(await readFile(file, "utf8")).toBe("{not-json");
-  });
-
-  it("denies unrelated tool calls when a check crashes, with recovery instructions", () => {
-    const result = runChecks(
-      "PreToolUse",
-      { tool_input: { command: "npm test" }, tool_name: "Bash" },
-      [
-        function crashingCheck() {
-          throw new ReferenceError("someConstant is not defined");
-        },
-      ],
-      { root: process.cwd(), runtime: "claude" }
-    );
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
-
-    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
-    expect(shaped.permissionDecisionReason).toContain("crashed; it did not deny this action");
-    expect(shaped.permissionDecisionReason).toContain("scripts/agent-hooks");
-    expect(shaped.permissionDecisionReason).toContain("`!` prefix");
-  });
-
-  it("permits hook-runtime repair while a check is crashing so the session can self-heal", () => {
-    const result = runChecks(
-      "PreToolUse",
-      {
-        tool_input: { file_path: "scripts/agent-hooks/repository-boundary.mjs" },
-        tool_name: "Edit",
-      },
-      [
-        function crashingCheck() {
-          throw new ReferenceError("someConstant is not defined");
-        },
-      ],
-      { root: process.cwd(), runtime: "claude" }
-    );
-    const shaped = shapeHookResult("PreToolUse", result);
-
-    expect(hookFeedback(shaped.output).permissionDecisionReason).toBeUndefined();
-    expect(shaped.output.systemMessage).toContain("Permitted as hook-runtime repair");
-    expect(shaped.output.systemMessage).toContain("Boundary enforcement is NOT running");
-  });
-
-  it("denies a crashing-check repair path that escapes the repository", () => {
-    const result = runChecks(
-      "PreToolUse",
-      {
-        tool_input: { file_path: "../outside/scripts/agent-hooks/evil.mjs" },
-        tool_name: "Write",
-      },
-      [
-        function crashingCheck() {
-          throw new ReferenceError("someConstant is not defined");
-        },
-      ],
-      { root: process.cwd(), runtime: "claude" }
-    );
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
-
-    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
-  });
-
-  it("denies a crashing-check Bash call that merely mentions the hook runtime", () => {
-    const result = runChecks(
-      "PreToolUse",
-      {
-        tool_input: { command: "rm -rf scripts/agent-hooks" },
-        tool_name: "Bash",
-      },
-      [
-        function crashingCheck() {
-          throw new ReferenceError("someConstant is not defined");
-        },
-      ],
-      { root: process.cwd(), runtime: "claude" }
-    );
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
-
-    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
-  });
-
-  it("keeps same-hook PreToolUse denial reasons from multiple checks", () => {
-    const result = runChecks("PreToolUse", {}, [
-      function firstCheck() {
-        return { deny: "load required skill" };
-      },
-      function secondCheck() {
-        return { block: "unsafe Bash command" };
-      },
+    expect(analysis.errors).toEqual([]);
+    expect(analysis.invocations.map((invocation) => invocation.executable)).toEqual([
+      "psql",
+      "tee",
+      "rm",
     ]);
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
+    expect(analysis.invocations.find((invocation) => invocation.executable === "psql")?.piped).toBe(
+      true
+    );
+    expect(
+      analysis.invocations.find((invocation) => invocation.executable === "rm")?.arguments.at(-1)
+        ?.parts[0]?.type
+    ).toBe("SimpleExpansion");
+  });
 
-    expect(shaped.permissionDecisionReason).toContain("load required skill");
-    expect(shaped.permissionDecisionReason).toContain("unsafe Bash command");
+  it("classifies verification domains from parsed commands and package scripts", () => {
+    expect(classifyCommandDomains("npm run check", { root: repositoryRoot })).toEqual([
+      "build",
+      "lint",
+      "test",
+      "typecheck",
+    ]);
+    expect(classifyCommandDomains("npm run guard:agent", { root: repositoryRoot })).toEqual([
+      "guard",
+      "sync",
+    ]);
+    expect(classifyCommandDomains("npx vitest run && gh pr checks 42")).toEqual([
+      "github-checks",
+      "test",
+    ]);
+    expect(classifyCommandDomains("printf 'npm test' && unknown-command")).toEqual([]);
+    expect(classifyCommandDomains("npm run does-not-exist")).toEqual([]);
+    for (const inspection of [
+      "npm test -- --help",
+      "npx vitest --help",
+      "gh pr status",
+      "gh run list",
+      "gh run view 123",
+      "gh run watch 123",
+      "gh api repos/example/project/actions/runs",
+    ]) {
+      expect(classifyCommandDomains(inspection), inspection).toEqual([]);
+    }
+    expect(classifyCommandDomains("gh run watch 123 --exit-status")).toEqual(["github-checks"]);
+  });
+
+  it("records only outcomes proven by the enclosing shell AST", () => {
+    for (const command of [
+      "npm test || true",
+      "npm test; true",
+      "npm test | cat",
+      "result=$(npm test); true",
+      "bash -c 'npm test || true'",
+    ]) {
+      expect(classifyCommandDomains(command, { root: repositoryRoot }), command).toEqual([]);
+    }
+
+    expect(classifyCommandDomains("npm test && npm run lint", { root: repositoryRoot })).toEqual([
+      "lint",
+      "test",
+    ]);
+    expect(
+      classifyCommandOutcomeDomains("npm test && npm run lint", "failure", {
+        root: repositoryRoot,
+      })
+    ).toEqual([]);
+    expect(
+      classifyCommandOutcomeDomains("npm run typecheck", "failure", { root: repositoryRoot })
+    ).toEqual(["typecheck"]);
+    expect(
+      classifyCommandOutcomeDomains("npm run check:package", "failure", {
+        root: repositoryRoot,
+      })
+    ).toEqual(["package"]);
+  });
+
+  it("classifies only the exact owned prompt as a surface-sync source", () => {
+    expect(isCanonicalAgentSurfaceSource(".agents/prompts/supaschema-install.md")).toBe(true);
+    expect(isCanonicalAgentSurfaceSource(".agents/prompts/unrelated.md")).toBe(false);
   });
 });
 
-describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
-  it("keeps leading-slash skill prompts pending until an observable load", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "/code-atlas map scripts", session_id: "slash-session" };
-
-    const prompt = handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-    expect(prompt.output).toMatchObject({
-      hookSpecificOutput: expect.objectContaining({
-        additionalContext: expect.stringContaining("Load code-atlas"),
-      }),
-    });
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
-
-    const blocked = handleAgentHookEvent(
-      "PreToolUse",
+describe("narrow Bash enforcement", () => {
+  const evaluate = (command: string, options: { env?: NodeJS.ProcessEnv; root?: string } = {}) =>
+    evaluateBashPolicy(
       {
-        session_id: "slash-session",
-        tool_input: { file_path: "scripts/guards/agent-surface/check-agent-hooks.mjs" },
-        tool_name: "Edit",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(blocked.output).toMatchObject({
-      hookSpecificOutput: expect.objectContaining({
-        permissionDecision: "deny",
-        permissionDecisionReason: expect.stringContaining("not an observable skill load"),
-      }),
-    });
-  });
-
-  it("blocks apply_patch edits while a required Claude skill is pending", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "apply-patch-pending" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const blocked = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "apply-patch-pending",
-        tool_input: {
-          command: "*** Begin Patch\n*** Update File: src/cli.ts\n@@\n export {}\n*** End Patch\n",
-        },
-        tool_name: "apply_patch",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(blocked.output).toMatchObject({
-      hookSpecificOutput: expect.objectContaining({
-        permissionDecision: "deny",
-        permissionDecisionReason: expect.stringContaining("not an observable skill load"),
-      }),
-    });
-  });
-
-  it("clears pending only after a Skill tool load or SKILL.md read", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "clear-session" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      { session_id: "clear-session", tool_input: { skill: "code-atlas" }, tool_name: "Skill" },
-      { root, runtime: "claude" }
-    );
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "clear-session",
-        tool_input: { file_path: join(root, ".claude/skills/code-atlas/SKILL.md") },
-        tool_name: "Read",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-  }, 15_000);
-
-  it("allows the first observable Claude skill load before blocking governed work", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "load-first" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const unrelatedRead = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "load-first",
-        tool_input: {
-          command: "sed -n '1,120p' README.md",
-        },
+        cwd: options.root ?? repositoryRoot,
+        tool_input: { command, cwd: options.root ?? repositoryRoot },
         tool_name: "Bash",
       },
-      { root, runtime: "claude" }
+      options.env ?? process.env,
+      { root: options.root ?? repositoryRoot }
     );
 
-    expect(unrelatedRead.output).toMatchObject({
-      hookSpecificOutput: expect.objectContaining({
-        permissionDecision: "deny",
-        permissionDecisionReason: expect.stringContaining("not an observable skill load"),
-      }),
-    });
-
-    const skillRead = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "load-first",
-        tool_input: {
-          command: "sed -n '1,120p' .claude/skills/code-atlas/SKILL.md",
-        },
-        tool_name: "Bash",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(skillRead.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-
-    const blocked = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "load-first",
-        tool_input: { file_path: "src/cli.ts" },
-        tool_name: "Edit",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(blocked.output).toMatchObject({
-      hookSpecificOutput: expect.objectContaining({
-        permissionDecision: "deny",
-        permissionDecisionReason: expect.stringContaining("not an observable skill load"),
-      }),
-    });
+  it.each([
+    "git switch -c feature/parser-hooks",
+    "git reset --hard HEAD",
+    "git push --force origin main",
+    "git merge --squash feature/parser-hooks",
+    "git worktree add ../parser-hooks HEAD",
+  ])("does not hook-block Git or worktree command: %s", (command) => {
+    expect(evaluate(command)).toEqual({ action: "allow" });
   });
 
-  it("allows Code Atlas evidence acquisition while Claude skills are pending", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "atlas-first" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+  it("blocks literal secrets and direct known-secret-file display", () => {
+    expect(evaluate("API_TOKEN='abcdefghijklmnop' curl https://example.com").action).toBe("block");
+    expect(evaluate("curl --api-key abcdefghijklmnop https://example.com").action).toBe("block");
+    expect(evaluate("curl postgresql://user:abcdefghijklmnop@localhost/database").action).toBe(
+      "block"
+    );
+    expect(evaluate("cat .env").action).toBe("block");
+    expect(evaluate("command cat -- .env").action).toBe("block");
+    expect(evaluate("cat config/.pgpass").action).toBe("block");
+    expect(evaluate("cat .env.example")).toEqual({ action: "allow" });
+    expect(evaluate("cat .env.template")).toEqual({ action: "allow" });
+  });
 
-    const atlasQuery = {
-      session_id: "atlas-first",
-      tool_input: {
-        command:
-          "npm run code-atlas:query -- pre-edit scripts/guards/agent-surface/check-agent-hooks.mjs --json",
-      },
+  it("blocks parser-confirmed literal PostgreSQL DDL arguments only", () => {
+    expect(evaluate("psql -c 'CREATE TABLE app.accounts (id bigint)'").action).toBe("block");
+    expect(evaluate("psql --command='ALTER TABLE app.accounts ADD COLUMN name text'").action).toBe(
+      "block"
+    );
+    expect(
+      evaluate("psql -v ON_ERROR_STOP=1 -XAtc 'CREATE TABLE app.audit (id bigint)'").action
+    ).toBe("block");
+    expect(evaluate("env psql -c 'CREATE POLICY p ON app.accounts USING (true)'").action).toBe(
+      "block"
+    );
+    expect(evaluate("supabase db execute --sql 'DROP TABLE app.accounts'").action).toBe("block");
+    expect(evaluate("psql -c 'SELECT 1'")).toEqual({ action: "allow" });
+    expect(evaluate("psql -f migration.sql")).toEqual({ action: "allow" });
+    expect(evaluate("psql -c $SQL")).toEqual({ action: "allow" });
+    expect(evaluate("psql <<'SQL'\nCREATE TABLE app.t(id int);\nSQL")).toEqual({ action: "allow" });
+  });
+
+  it("blocks only high-confidence dangerous recursive forced deletion", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-bash-delete-root-"));
+    const env = { ...process.env, HOME: dirname(root) };
+
+    expect(evaluate("rm -rf /", { env, root }).action).toBe("block");
+    expect(evaluate("rm --recursive --force /", { env, root }).action).toBe("block");
+    expect(evaluate(`rm -rf ${root}`, { env, root }).action).toBe("block");
+    expect(evaluate("rm -rf ..", { env, root }).action).toBe("block");
+    expect(evaluate("rm -rf $TARGET", { env, root }).action).toBe("block");
+    expect(evaluate("rm -rf build/*", { env, root }).action).toBe("block");
+    expect(evaluate('rm -rf / "unterminated', { env, root })).toEqual({ action: "allow" });
+    expect(evaluate("rm -rf .tmp/cache", { env, root })).toEqual({ action: "allow" });
+    expect(evaluate("rm -r /", { env, root })).toEqual({ action: "allow" });
+    expect(evaluate("rm -f /", { env, root })).toEqual({ action: "allow" });
+    expect(evaluate("rm -rf 'unterminated", { env, root })).toEqual({ action: "allow" });
+  });
+});
+
+describe("structured verification conflicts", () => {
+  it("blocks only a success claim contradicted by the latest matching failure", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const sessionId = "verification-conflict";
+
+    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
+    failedCommand(sessionId, "npm test", fixture);
+    expect(stop(sessionId, "Tests failed; the error remains.", fixture).output).toEqual({});
+    expect(
+      stop(sessionId, "Tests passed previously, but the current tests failed.", fixture).output
+    ).toEqual({});
+    expect(stop(sessionId, "Tests passed.", fixture).output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("test"),
+    });
+    successfulCommand(sessionId, "npm test", fixture);
+    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
+  });
+
+  it("requires structured Codex outcomes before recording verification evidence", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const sessionId = "codex-verification";
+    const options: HookFixture["options"] = { ...fixture.options, runtime: "codex" };
+    const payload = {
+      hook_event_name: "PostToolUse",
+      session_id: sessionId,
+      tool_input: { command: "npm test" },
       tool_name: "Bash",
     };
-    const allowed = handleAgentHookEvent("PreToolUse", atlasQuery, { root, runtime: "claude" });
-    expect(allowed.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
 
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...atlasQuery,
-        tool_response: { exit_code: 0 },
-      },
-      { root, runtime: "claude" }
-    );
+    handleAgentHookEvent("PostToolUse", payload, options);
+    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
 
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "code-atlas-query",
-          outcome: "success",
-          queryKind: "pre-edit",
-          value: "scripts/guards/agent-surface/check-agent-hooks.mjs",
-        }),
-      ])
-    );
+    handleAgentHookEvent("PostToolUse", { ...payload, tool_response: { exit_code: 1 } }, options);
+    expect(stop(sessionId, "Tests passed.", fixture).output.decision).toBe("block");
+
+    handleAgentHookEvent("PostToolUse", { ...payload, tool_response: { exit_code: 0 } }, options);
+    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
   });
 
-  it("does not emit advisory context for already loaded tool-triggered skills", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "quiet-loaded-skill" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "quiet-loaded-skill",
-        tool_input: { skill: "code-atlas" },
-        tool_name: "Skill",
-      },
-      { root, runtime: "claude" }
-    );
+  it("ignores hedging, decision menus, incidents, and raw response text", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const sessionId = "verification-nonclaims";
+    failedCommand(sessionId, "npm test", fixture);
 
-    const allowed = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "quiet-loaded-skill",
-        tool_input: { file_path: "scripts/guards/agent-surface/check-agent-hooks.mjs" },
-        tool_name: "Edit",
-      },
-      { root, runtime: "claude" }
-    );
+    for (const message of [
+      "Tests did not pass.",
+      "I could rerun tests or inspect the failure; which do you prefer?",
+      "Command not found: vitest.",
+      "The likely test outcome is uncertain.",
+      "Could tests pass after another change?",
+      "Will tests pass?",
+    ]) {
+      expect(stop(sessionId, message, fixture).output, message).toEqual({});
+    }
 
-    expect(allowed.output.hookSpecificOutput).toBeUndefined();
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-  });
-
-  it("does not clear mid-prompt skill tokens without an observable load", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "please use $code-atlas after checking scripts", session_id: "mid" };
-
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
-    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("code-atlas");
-  });
-
-  it("keeps generic hook prose from loading unrelated skills", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt:
-        "there should not be this much noise around hooks enforcers, what else needs to be done to ensure the proper loading enforcement is applied without all the noise?",
-      session_id: "generic-hook-prose",
-    };
-
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    expect(Object.keys(currentTurnState(readSessionState(payload)).pendingSkills).sort()).toEqual([
-      "optimizer",
-    ]);
-  });
-
-  it("keeps low-signal prompt words from loading task and verification skills", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "use $task-creator to verify all assumptions",
-      session_id: "task-token-only",
-    };
-
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    expect(Object.keys(currentTurnState(readSessionState(payload)).pendingSkills)).toEqual([
-      "task-creator",
-    ]);
-  });
-
-  it("honors explicit low-signal skill names without treating the bare word as a trigger", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const explicit = { prompt: "make the fixes then $update", session_id: "explicit-update" };
-    handleAgentHookEvent("UserPromptSubmit", explicit, { root, runtime: "claude" });
-    expect(Object.keys(currentTurnState(readSessionState(explicit)).pendingSkills)).toEqual([
-      "update",
-    ]);
-
-    const bare = {
-      prompt: "please update the docs and verify the plan",
-      session_id: "bare-update",
-    };
-    handleAgentHookEvent("UserPromptSubmit", bare, { root, runtime: "claude" });
-    expect(currentTurnState(readSessionState(bare)).pendingSkills).toEqual({});
-  });
-
-  it("keeps every explicit skill token even when more than five skills are named", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "$code-atlas $optimizer $adversarial-verification $task-creator $supaschema $update",
-      session_id: "explicit-skill-list",
-    };
-
-    const result = handleAgentHookEvent("UserPromptSubmit", payload, {
-      root,
-      runtime: "claude",
+    successfulCommand(sessionId, "npm test", fixture, {
+      stdout: "Process exited with code 1; tests failed",
     });
-    const pending = Object.keys(currentTurnState(readSessionState(payload)).pendingSkills).sort();
-
-    expect(pending).toEqual(
-      [
-        "adversarial-verification",
-        "code-atlas",
-        "optimizer",
-        "supaschema",
-        "task-creator",
-        "update",
-      ].sort()
-    );
-    expect(result.output.hookSpecificOutput?.additionalContext).toContain(
-      "Run this observable skill load now:"
-    );
-    expect(result.output.hookSpecificOutput?.additionalContext).toContain(
-      ".claude/skills/adversarial-verification/SKILL.md"
-    );
+    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
   });
 
-  it("does not treat command prose keywords as tool-scope skill signals", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "plain follow-up", session_id: "command-keyword-prose" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+  it("parses explicit verification claim grammar without subjective response scoring", () => {
+    expect(claimedVerificationDomains("Tests and typecheck passed; lint failed.")).toEqual([
+      "test",
+      "typecheck",
+    ]);
+    expect(claimedVerificationDomains("Tests did not pass.")).toEqual([]);
+    expect(claimedVerificationDomains("Here are options for running tests.")).toEqual([]);
+    expect(claimedVerificationDomains("Could tests pass after another change?")).toEqual([]);
+    expect(claimedVerificationDomains("Tests passed previously, but now fail.")).toEqual([]);
+    expect(claimedVerificationDomains("Earlier tests passed. The current tests failed.")).toEqual(
+      []
+    );
+    expect(claimedVerificationDomains("Tests previously failed but tests now passed.")).toEqual([
+      "test",
+    ]);
+    expect(claimedVerificationDomains("Tests passed after previously failing.")).toEqual(["test"]);
+    expect(claimedVerificationDomains("Tests passed previously but are failing now.")).toEqual([]);
+  });
+});
+
+describe("minimal private hook state", () => {
+  it("retries a transient owner-file initialization race", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "retry-owner-initialization" };
+    const originalOpenSync = fs.openSync;
+    let injectedFailure = false;
+    vi.spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
+      const target = String(file);
+      if (!injectedFailure && target.includes(".json.lock") && target.includes("owner-")) {
+        injectedFailure = true;
+        throw Object.assign(new Error("transient owner-file race"), { code: "EINVAL" });
+      }
+      return originalOpenSync(file, flags, mode);
+    });
+
+    withSessionState(payload, (state) => {
+      state.turnSequence = 7;
+      return { state };
+    });
+
+    expect(injectedFailure).toBe(true);
+    expect(readSessionState(payload).turnSequence).toBe(7);
+    expect(existsSync(`${sessionStatePath(payload)}.lock`)).toBe(false);
+  });
+
+  it("persists no prompt or command text and uses private permissions", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const sessionId = "private-state";
+    const promptMarker = "do-not-persist-this-prompt";
+    const commandMarker = "do-not-persist-this-command";
+
+    handleAgentHookEvent(
+      "UserPromptSubmit",
+      { prompt: `$fastmcp ${promptMarker}`, session_id: sessionId },
+      fixture.options
+    );
+    successfulCommand(sessionId, `npm test -- ${commandMarker}`, fixture);
+
+    const file = sessionStatePath({ session_id: sessionId });
+    const serialized = await readFile(file, "utf8");
+    expect(serialized).not.toContain(promptMarker);
+    expect(serialized).not.toContain(commandMarker);
+    expect(serialized).not.toContain("lastPrompt");
+    expect(serialized).not.toContain("command");
+    if (process.platform !== "win32") {
+      expect((await stat(fixture.stateDir)).mode % 0o1000).toBe(0o700);
+      expect((await stat(file)).mode % 0o1000).toBe(0o600);
+    }
+  });
+
+  it("recovers an empty lock directory instead of failing the hook", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "empty-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    const oldDate = new Date(Date.now() - 60_000);
+    await utimes(lockDirectory, oldDate, oldDate);
 
     const result = handleAgentHookEvent(
       "PreToolUse",
       {
-        session_id: "command-keyword-prose",
-        tool_input: { command: "echo hook hooks PreToolUse PostToolUse" },
-        tool_name: "Bash",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(result.output.hookSpecificOutput).toBeUndefined();
-  });
-
-  it("keeps pending skill enforcement scoped to the active turn", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const first = { prompt: "use $code-atlas for scripts", session_id: "turn-scope" };
-    handleAgentHookEvent("UserPromptSubmit", first, { root, runtime: "claude" });
-    expect(currentTurnState(readSessionState(first)).pendingSkills).toHaveProperty("code-atlas");
-
-    const second = { prompt: "plain follow-up", session_id: "turn-scope" };
-    handleAgentHookEvent("UserPromptSubmit", second, { root, runtime: "claude" });
-
-    const allowed = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "turn-scope",
+        session_id: payload.session_id,
         tool_input: { file_path: "README.md" },
         tool_name: "Read",
       },
-      { root, runtime: "claude" }
+      fixture.options
     );
-    expect(allowed.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-    expect(currentTurnState(readSessionState(second)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
+
+    expect(result.output.systemMessage).toBeUndefined();
+    expect(existsSync(lockDirectory)).toBe(false);
   });
 
-  it("keeps Codex skill matches advisory across turn ids", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "use $code-atlas", session_id: "codex-turn", turn_id: "turn-a" },
-      { root, runtime: "codex" }
+  it("reclaims a lock whose recorded owner process has exited", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "dead-owner-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    const token = "00000000-0000-4000-8000-0000000000de";
+    const exited = spawnSync(process.execPath, ["-e", ""]);
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    await writeFile(
+      join(lockDirectory, `owner-${token}.json`),
+      `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: exited.pid, token })}\n`,
+      { mode: 0o600 }
     );
-    expect(currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills).toEqual(
-      {}
-    );
-
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "different turn", session_id: "codex-turn", turn_id: "turn-b" },
-      { root, runtime: "codex" }
-    );
-    expect(currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills).toEqual(
-      {}
-    );
-  });
-
-  it("observes MCP SKILL.md reads as skill loads", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "mcp-load" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "mcp-load",
-        tool_input: {
-          action: "read",
-          target: ".agents/skills/code-atlas/SKILL.md",
-        },
-        tool_name: "mcp__supaschema__repo_context_query",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
-  });
-
-  it("observes shell SKILL.md reads as skill loads in Codex", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "shell-load" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "shell-load",
-        tool_input: {
-          command: "sed -n '1,120p' .agents/skills/code-atlas/SKILL.md",
-        },
-        tool_name: "Bash",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
-  });
-
-  it("observes shell SKILL.md reads with Windows separators in Codex", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "shell-load-win-path" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "shell-load-win-path",
-        tool_input: {
-          command: "sed -n '1,120p' .agents\\skills\\code-atlas\\SKILL.md",
-        },
-        tool_name: "Bash",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
-  });
-
-  it("ignores non-reader shell SKILL.md tokens when another segment reads a file", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "use $code-atlas for scripts",
-      session_id: "shell-load-non-reader-token",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "shell-load-non-reader-token",
-        tool_input: {
-          command: "echo .agents\\skills\\code-atlas\\SKILL.md && sed -n '1,20p' README.md",
-        },
-        tool_name: "Bash",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
-    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("code-atlas");
-  });
-
-  it("advises the mirrored Codex skill for an apply_patch file trigger", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "edit the policy", session_id: "codex-apply-patch-advisory" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
 
     const result = handleAgentHookEvent(
       "PreToolUse",
-      {
-        session_id: "codex-apply-patch-advisory",
-        tool_input: {
-          command:
-            "*** Begin Patch\n*** Update File: .claude/rules/12-skill-loading-enforcement.md\n*** End Patch",
-        },
-        tool_name: "apply_patch",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output.hookSpecificOutput?.additionalContext).toContain(
-      "Skill optimizer applies to this tool use"
-    );
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
-  });
-
-  it("observes one nested Codex shell reader command loading multiple pending skills", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "$code-atlas $optimizer $update",
-      session_id: "nested-multi-shell-load",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    const loadPayload = {
-      session_id: "nested-multi-shell-load",
-      tool_input: {
-        command: [
-          "bash -lc \"sed -n '1,120p'",
-          ".agents/skills/code-atlas/SKILL.md",
-          ".agents/skills/optimizer/SKILL.md",
-          '.agents/skills/update/SKILL.md"',
-        ].join(" "),
-      },
-      tool_name: "Bash",
-    };
-    const allowedLoad = handleAgentHookEvent("PreToolUse", loadPayload, {
-      root,
-      runtime: "codex",
-    });
-    expect(allowedLoad.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...loadPayload,
-        tool_response: { exit_code: 0 },
-      },
-      { root, runtime: "codex" }
-    );
-
-    const state = readSessionState(payload);
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("code-atlas");
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("optimizer");
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("update");
-    expect(state.invokedSkills).toHaveProperty("code-atlas");
-    expect(state.invokedSkills).toHaveProperty("optimizer");
-    expect(state.invokedSkills).toHaveProperty("update");
-
-    const edit = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "nested-multi-shell-load",
-        tool_input: { file_path: "src/cli.ts" },
-        tool_name: "Edit",
-      },
-      { root, runtime: "codex" }
-    );
-    expect(edit.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-  });
-
-  it("serializes concurrent Codex PostToolUse skill loads for one session", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "$optimizer $code-atlas",
-      session_id: "parallel-skill-loads",
-      turn_id: "turn-a",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    await Promise.all([
-      runHookEventInChild(
-        "PostToolUse",
-        {
-          session_id: "parallel-skill-loads",
-          tool_input: {
-            command: `sed -n '1,120p' ${join(root, ".agents/skills/optimizer/SKILL.md")}`,
-          },
-          tool_name: "Bash",
-          turn_id: "turn-a",
-        },
-        root,
-        stateDir
-      ),
-      runHookEventInChild(
-        "PostToolUse",
-        {
-          session_id: "parallel-skill-loads",
-          tool_input: {
-            command: `sed -n '1,120p' ${join(root, ".agents/skills/code-atlas/SKILL.md")}`,
-          },
-          tool_name: "Bash",
-          turn_id: "turn-a",
-        },
-        root,
-        stateDir
-      ),
-    ]);
-
-    const state = readSessionState(payload);
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("optimizer");
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("code-atlas");
-    expect(state.invokedSkills).toHaveProperty("optimizer");
-    expect(state.invokedSkills).toHaveProperty("code-atlas");
-  });
-});
-
-describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () => {
-  it("associates success with the verification head rather than topical modifiers", () => {
-    expect(claimedVerificationDomains("Package tests passed.")).toEqual(["test"]);
-    expect(claimedVerificationDomains("Package build succeeded.")).toEqual(["build"]);
-    expect(claimedVerificationDomains("Package check passed.")).toEqual(["package"]);
-    expect(claimedVerificationDomains("Project tests passed.")).toEqual(["test"]);
-    expect(claimedVerificationDomains("Repository guard passed.")).toEqual(["guard"]);
-    expect(claimedVerificationDomains("Sync check passed.")).toEqual(["sync"]);
-    expect(claimedVerificationDomains("GitHub status checks passed.")).toEqual(["github-checks"]);
-    expect(claimedVerificationDomains("CI checks passed.")).toEqual(["github-checks"]);
-    expect(claimedVerificationDomains("The check passed.")).toEqual([]);
-    expect(claimedVerificationDomains("Scoped git diff --check — passed.")).toEqual([]);
-    expect(claimedVerificationDomains("Tests and guard passed.").sort()).toEqual(["guard", "test"]);
-  });
-
-  it("recognizes verification compounds without scanning across topical prose", () => {
-    const subjects = [
-      ["Test suite", "test"],
-      ["Test run", "test"],
-      ["Guard command", "guard"],
-      ["Typecheck step", "typecheck"],
-      ["Lint task", "lint"],
-      ["Build job", "build"],
-    ];
-    for (const [subject, domain] of subjects) {
-      for (const outcome of ["passed", "succeeded", "is green", "was successful"]) {
-        expect(claimedVerificationDomains(`${subject} ${outcome}.`)).toEqual([domain]);
-      }
-    }
-    expect(claimedVerificationDomains("Package test suite completed successfully.")).toEqual([
-      "test",
-    ]);
-    expect(claimedVerificationDomains("The guard was completed successfully.")).toEqual(["guard"]);
-    for (const message of [
-      "Guard complete.",
-      "Guard completes.",
-      "Guard completed.",
-      "I completed package docs successfully.",
-      "The report about package tests was successful.",
-      "Research regarding docs and package succeeded.",
-      "A review concerning package docs passed.",
-      "A study around docs and package was successful.",
-      "The completed research report about external package docs was successful.",
-      "The project report covering external package docs succeeded.",
-    ]) {
-      expect(claimedVerificationDomains(message)).toEqual([]);
-    }
-  });
-
-  it("continues Codex Stop once and never twice for the same correction", async () => {
-    const hedgedClosingMessage =
-      "The migration probably applies and it might be idempotent, so the plan seems correct overall.";
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "review with $upstream",
-      session_id: "codex-stop-continuation",
-      turn_id: "turn-1",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        background_tasks: [{ id: "019f4d1a-3671-7f91-8f4c-cc527b4ed6d1" }],
-        last_assistant_message: hedgedClosingMessage,
-        session_id: "codex-stop-continuation",
-        turn_id: "turn-1",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("dense hedging"),
-    });
-    expect(result.stdout).toContain('"decision":"block"');
-
-    const repeated = handleAgentHookEvent(
-      "Stop",
-      {
-        background_tasks: [{ id: "019f4d1a-3671-7f91-8f4c-cc527b4ed6d1" }],
-        last_assistant_message: hedgedClosingMessage,
-        session_id: "codex-stop-continuation",
-        stop_hook_active: true,
-        turn_id: "turn-1",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(repeated.output).toEqual({});
-    expect(repeated.stdout).toBe("{}\n");
-    expect(correctionsFor(payload, readSessionState(payload))).toEqual([]);
-  });
-
-  it("does not treat a completed external-repository research report as verification", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      session_id: "research-report-mentions",
-      turn_id: "turn-1",
-    };
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        ...payload,
-        last_assistant_message: [
-          "Read-only research of the external repository docs and package layout is complete.",
-          "No verification commands were run.",
-        ].join(" "),
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output).toEqual({});
-    expect(correctionsFor(payload, readSessionState(payload))).toEqual([]);
-  });
-
-  it("requires positive evidence only when the runtime producer path is observable", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const message = "The tests pass and the guard passed.";
-    const claudePayload = {
-      last_assistant_message: message,
-      session_id: "explicit-verification-claims-claude",
-      turn_id: "turn-1",
-    };
-    const codexPayload = {
-      last_assistant_message: message,
-      session_id: "explicit-verification-claims-codex",
-      turn_id: "turn-1",
-    };
-
-    const claudeResult = handleAgentHookEvent("Stop", claudePayload, {
-      root,
-      runtime: "claude",
-    });
-    const codexResult = handleAgentHookEvent("Stop", codexPayload, {
-      root,
-      runtime: "codex",
-    });
-
-    expect(claudeResult.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("no successful evidence was recorded for: test, guard"),
-    });
-    expect(codexResult.output).toEqual({});
-  });
-
-  it("blocks Codex verification claims contradicted by recorded failure evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      session_id: "codex-recorded-verification-failure",
-      turn_id: "turn-1",
-    };
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: { command: "npm test -- failing-fixture" },
-        tool_name: "Bash",
-        tool_response: { exit_code: 1 },
-      },
-      { root, runtime: "codex" }
-    );
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      { ...payload, last_assistant_message: "The tests passed." },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("failed evidence remains unresolved for: test"),
-    });
-  });
-
-  it("emits an identical cross-turn subagent correction once per runtime", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-
-    for (const runtime of ["claude", "codex"]) {
-      const payload = {
-        agent_id: `worker-${runtime}`,
-        last_assistant_message:
-          "Maybe probably possibly the package report could differ after the final review today.",
-        session_id: `cross-turn-correction-${runtime}`,
-        turn_id: "turn-1",
-      };
-      const first = handleAgentHookEvent("SubagentStop", payload, { root, runtime });
-      const second = handleAgentHookEvent(
-        "SubagentStop",
-        { ...payload, turn_id: "turn-2" },
-        { root, runtime }
-      );
-      const third = handleAgentHookEvent(
-        "SubagentStop",
-        { ...payload, turn_id: "turn-3" },
-        { root, runtime }
-      );
-
-      expect(first.output).toMatchObject({
-        decision: "block",
-        reason: expect.stringContaining("dense hedging"),
-      });
-      expect(second.output).toEqual({});
-      expect(third.output).toEqual({});
-      expect(second.stdout).toBe(runtime === "codex" ? "{}\n" : "");
-      expect(third.stdout).toBe(runtime === "codex" ? "{}\n" : "");
-    }
-  });
-
-  it("does not count historical could statements as dense hedging", () => {
-    const historicalFailureSummary = [
-      "Malformed hook input could silently misfire.",
-      "Claude and Codex SessionStart contracts could not safely share one schema.",
-      "Partial canonical mutations could escape synchronization.",
-    ].join(" ");
-
-    expect(hedgeDensity(historicalFailureSummary)).toBeUndefined();
-  });
-
-  it("does not repeat an emitted signature when a revised response adds a new correction", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      last_assistant_message: "The package was successful.",
-      session_id: "mixed-correction-signatures",
-      turn_id: "turn-1",
-    };
-
-    handleAgentHookEvent("Stop", payload, { root, runtime: "claude" });
-    const revised = handleAgentHookEvent(
-      "Stop",
-      {
-        ...payload,
-        last_assistant_message:
-          "The package was successful. Maybe probably possibly the report could differ.",
-        turn_id: "turn-2",
-      },
-      { root, runtime: "claude" }
-    );
-    const repeated = handleAgentHookEvent(
-      "Stop",
-      {
-        ...payload,
-        last_assistant_message:
-          "The package was successful. Maybe probably possibly the report could differ.",
-        turn_id: "turn-3",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(revised.output.reason).toContain("dense hedging");
-    expect(revised.output.reason).not.toContain("no successful evidence was recorded for: package");
-    expect(repeated.output).toEqual({});
-  });
-
-  it("clears a correction when the revised response disclaims verification", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      agent_id: "disclaimer-worker",
-      last_assistant_message: "The package was successful.",
-      session_id: "correction-disclaimer",
-      turn_id: "turn-1",
-    };
-
-    const first = handleAgentHookEvent("SubagentStop", payload, { root, runtime: "claude" });
-    const revised = handleAgentHookEvent(
-      "SubagentStop",
-      {
-        ...payload,
-        last_assistant_message:
-          "Package verification was not run; this is a read-only research report.",
-        turn_id: "turn-2",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(first.output).toMatchObject({ decision: "block" });
-    expect(revised.output).toEqual({});
-    expect(correctionsFor(payload, readSessionState(payload))).toEqual([]);
-  });
-
-  it("preserves a main correction across the generated continuation prompt", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const firstPayload = {
-      last_assistant_message: "The package was successful.",
-      session_id: "main-correction-continuation",
-      turn_id: "turn-1",
-    };
-    const first = handleAgentHookEvent("Stop", firstPayload, { root, runtime: "claude" });
-    const reason = stringValue(first.output.reason);
-
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      {
-        prompt: reason,
-        session_id: firstPayload.session_id,
-        turn_id: "turn-2",
-      },
-      { root, runtime: "claude" }
-    );
-    const repeated = handleAgentHookEvent(
-      "Stop",
-      { ...firstPayload, turn_id: "turn-2" },
-      { root, runtime: "claude" }
-    );
-
-    expect(reason).toContain("no successful evidence was recorded for: package");
-    expect(repeated.output).toEqual({});
-  });
-
-  it("clears correction lanes at their actor lifecycle boundaries", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const session = { session_id: "correction-lifecycle", turn_id: "turn-1" };
-    const claim = { ...session, last_assistant_message: "The package was successful." };
-
-    handleAgentHookEvent("Stop", claim, { root, runtime: "claude" });
-    handleAgentHookEvent("SubagentStop", { ...claim, agent_id: "worker-1" }, { root });
-    handleAgentHookEvent("SubagentStop", { ...claim, agent_id: "worker-2" }, { root });
-
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { ...session, prompt: "a new user request", turn_id: "turn-2" },
-      { root, runtime: "claude" }
-    );
-    let state = readSessionState(session);
-    expect(correctionsFor({}, state)).toEqual([]);
-    expect(correctionsFor({ agent_id: "worker-1" }, state)).toHaveLength(1);
-    expect(correctionsFor({ agent_id: "worker-2" }, state)).toHaveLength(1);
-
-    handleAgentHookEvent(
-      "SubagentStart",
-      { ...session, agent_id: "worker-1", turn_id: "turn-2" },
-      { root, runtime: "claude" }
-    );
-    state = readSessionState(session);
-    expect(correctionsFor({ agent_id: "worker-1" }, state)).toEqual([]);
-    expect(correctionsFor({ agent_id: "worker-2" }, state)).toHaveLength(1);
-  });
-
-  it("drops legacy corrections and bounds the actor ledger", () => {
-    const correction = {
-      id: "claim-without-evidence",
-      message: "Missing verification evidence.",
-    };
-    const state = normalizeState({
-      currentTurnId: "turn-1",
-      turns: { "turn-1": { corrections: [correction] } },
-    });
-
-    expect(correctionsFor({}, state)).toEqual([]);
-    for (let index = 0; index < 25; index += 1) {
-      setCorrections({ agent_id: `worker-${index}` }, state, [correction]);
-    }
-    expect(Object.keys(state.responseCorrections)).toHaveLength(20);
-    expect(state.responseCorrections).not.toHaveProperty("agent:worker-0");
-    expect(state.responseCorrections).toHaveProperty("agent:worker-24");
-  });
-
-  it("isolates subagent corrections and permits only null-device redirection", () => {
-    const correction = {
-      id: "claim-without-evidence",
-      message: "Missing package verification evidence.",
-    };
-    const isolatedState = normalizeState({});
-    setCorrections({ agent_id: "worker-1" }, isolatedState, [correction]);
-
-    expect(
-      preToolEvidenceGate(
-        {
-          tool_input: { command: "echo report > artifact.txt" },
-          tool_name: "Bash",
-        },
-        isolatedState
-      )
-    ).toEqual({});
-
-    const mainState = normalizeState({});
-    const readOnly = {
-      tool_input: {
-        command: "ls example 2>/dev/null && cat example 2>/dev/null | head",
-      },
-      tool_name: "Bash",
-    };
-    setCorrections(readOnly, mainState, [correction]);
-
-    expect(preToolEvidenceGate(readOnly, mainState)).toEqual({});
-    for (const command of [
-      "echo report &>/dev/null",
-      "echo report >& /dev/null",
-      "echo report >| /dev/null",
-    ]) {
-      expect(
-        preToolEvidenceGate(
-          {
-            tool_input: { command },
-            tool_name: "Bash",
-          },
-          mainState
-        )
-      ).toEqual({});
-    }
-    for (const command of [
-      "echo report > artifact.txt",
-      "echo report >> artifact.txt",
-      "echo report &> artifact.txt",
-      "echo report 2> artifact.txt",
-      "echo report >& artifact.txt",
-      "echo report >| artifact.txt",
-      "echo report 2>&1",
-    ]) {
-      expect(
-        preToolEvidenceGate(
-          {
-            tool_input: { command },
-            tool_name: "Bash",
-          },
-          mainState
-        ).deny
-      ).toContain("Response evidence correction is still pending");
-    }
-    expect(
-      preToolEvidenceGate(
-        {
-          tool_input: { command: "echo 'report > artifact.txt'" },
-          tool_name: "Bash",
-        },
-        mainState
-      )
-    ).toEqual({});
-  });
-
-  it("records Codex exec command evidence under the detector success kind", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the check", session_id: "exec-evidence" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-evidence",
-        tool_input: { command: "npm run guard:agent" },
-        tool_name: "Bash",
-        tool_response: { exit_code: 0 },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npm run guard:agent",
-        kind: "verified-command",
-      })
-    );
-  });
-
-  it("normalizes every observed shell command payload shape", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the checks", session_id: "shell-payload-evidence" };
-    const shapes = [
-      ["Bash", "command"],
-      ["Bash", "cmd"],
-      ["exec_command", "command"],
-      ["exec_command", "cmd"],
-      ["functions.exec_command", "command"],
-      ["functions.exec_command", "cmd"],
-    ];
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    for (const [index, [toolName, commandField]] of shapes.entries()) {
-      const command = `npm run guard:agent -- --shape=${index}`;
-      handleAgentHookEvent(
-        "PostToolUse",
-        {
-          session_id: payload.session_id,
-          tool_input: { [commandField]: command },
-          tool_name: toolName,
-          tool_response: { exit_code: 0 },
-        },
-        { root, runtime: "codex" }
-      );
-
-      expect(currentTurnState(readSessionState(payload)).evidence.at(-1)).toMatchObject({
-        command,
-        domains: ["guard"],
-        kind: "verified-command",
-        outcome: "success",
-      });
-    }
-    expect(currentTurnState(readSessionState(payload)).evidence).toHaveLength(shapes.length);
-
-    const atlasCommand =
-      "node scripts/code-atlas/query.mjs pre-edit scripts/agent-hooks/command-evidence.mjs";
-    handleAgentHookEvent(
-      "PostToolUse",
       {
         session_id: payload.session_id,
-        tool_input: { cmd: atlasCommand },
-        tool_name: "exec_command",
-        tool_response: { exit_code: 0 },
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
       },
-      { root, runtime: "codex" }
+      fixture.options
     );
-    expect(currentTurnState(readSessionState(payload)).evidence.at(-1)).toMatchObject({
-      command: atlasCommand,
-      kind: "code-atlas-query",
-      outcome: "success",
-      queryKind: "pre-edit",
-      value: "scripts/agent-hooks/command-evidence.mjs",
-    });
+
+    expect(JSON.stringify(result)).not.toContain("timed out waiting for session state lock");
+    expect(result.output.systemMessage).toBeUndefined();
+    expect(existsSync(lockDirectory)).toBe(false);
   });
 
-  it.each([
-    ["isError", false, "success"],
-    ["isError", true, "failure"],
-    ["is_error", false, "success"],
-    ["is_error", true, "failure"],
-  ])("records the local Atlas tool from top-level %s=%s", async (key, value, outcome) => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: `local-${key}-${value}`, turn_id: "turn-1" };
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: {
-          kind: "pre-edit",
-          value: "scripts/agent-hooks/command-evidence.mjs",
-        },
-        tool_name: "mcp__supaschema__code_atlas_query",
-        tool_response: { [key]: value },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        kind: "code-atlas-query",
-        outcome,
-        queryKind: "pre-edit",
-      })
-    );
-  });
-
-  it("does not infer a local Atlas outcome from nested isError", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: "nested-local-outcome", turn_id: "turn-1" };
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: { kind: "impact", value: "scripts/agent-hooks/command-evidence.mjs" },
-        tool_name: "mcp__supaschema__code_atlas_query",
-        tool_response: { data: { isError: false } },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it.each([
-    "describe_snapshot_schema",
-    "filter_review_findings",
-    "get_coverage_overlay",
-    "get_function_dependencies",
-    "get_impact_of_change",
-    "get_regression_scope",
-    "get_review_context",
-    "pre_edit_brief",
-    "query_snapshot",
-    "run_review",
-    "set_review_guidelines",
-    "update_ai_finding_status",
-    "clear_findings",
-    "configure_ai_provider",
-    "generate_review",
-    "unknown_direct_tool",
-  ])("does not record removed direct CodeAtlas tool %s", async (tool) => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: `removed-live-${tool}`, turn_id: "turn-1" };
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: {},
-        tool_name: `mcp__codeatlas__${tool}`,
-        tool_response: { isError: false },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("requires local Atlas evidence for a Code Atlas passed claim", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const livePayload = { session_id: "missing-atlas-claim", turn_id: "turn-1" };
-
-    const liveClaim = handleAgentHookEvent(
-      "Stop",
-      { ...livePayload, last_assistant_message: "Code Atlas passed." },
-      { root, runtime: "claude" }
-    );
-    expect(liveClaim.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("no successful evidence was recorded for: code-atlas"),
-    });
-
-    const localPayload = { session_id: "local-atlas-claim", turn_id: "turn-1" };
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...localPayload,
-        tool_input: { kind: "pre-edit", value: "scripts/agent-hooks/command-evidence.mjs" },
-        tool_name: "mcp__supaschema__code_atlas_query",
-        tool_response: { isError: false },
-      },
-      { root, runtime: "claude" }
-    );
-
-    const localClaim = handleAgentHookEvent(
-      "Stop",
-      { ...localPayload, last_assistant_message: "Code Atlas passed." },
-      { root, runtime: "claude" }
-    );
-    expect(localClaim.output).toEqual({});
-  });
-
-  it("reads exec command aliases from transcript evidence", async () => {
-    const transcriptDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-transcript-"));
-    const transcriptPath = join(transcriptDir, "transcript.jsonl");
-    const entries = [
-      {
-        timestamp: "2026-07-21T12:00:00.000Z",
-        tool_input: { cmd: "npm run guard:agent" },
-        tool_name: "exec_command",
-        tool_response: { exit_code: 0 },
-        type: "tool_result",
-      },
-      {
-        payload: {
-          arguments: JSON.stringify({ cmd: "npm run typecheck" }),
-          call_id: "exec-command-call",
-          name: "functions.exec_command",
-          type: "function_call",
-        },
-        timestamp: "2026-07-21T12:00:01.000Z",
-      },
-      {
-        payload: {
-          call_id: "exec-command-call",
-          output: "Process exited with code 0",
-          type: "function_call_output",
-        },
-        timestamp: "2026-07-21T12:00:02.000Z",
-      },
-    ];
+  it("discards a superseded lock owner when the session restarts", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "superseded-owner-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    const token = "00000000-0000-4000-8000-0000000000aa";
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
     await writeFile(
-      transcriptPath,
-      `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`
+      join(lockDirectory, `owner-${token}.json`),
+      `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: process.pid, token })}\n`,
+      { mode: 0o600 }
     );
 
-    expect(transcriptEvidence({ transcript_path: transcriptPath })).toEqual([
-      expect.objectContaining({
-        command: "npm run guard:agent",
-        domains: ["guard"],
-        outcome: "success",
-      }),
-      expect.objectContaining({
-        command: "npm run typecheck",
-        domains: ["typecheck"],
-        outcome: "success",
-      }),
-    ]);
+    expect(handleSessionLifecycleEvent("SessionStart", payload, fixture.options).stdout).toBe("");
+    expect(existsSync(lockDirectory)).toBe(false);
+    expect(readSessionState(payload).sessionId).toBe(payload.session_id);
   });
 
-  it("records npm run check as composite local verification evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the umbrella check", session_id: "exec-npm-check-evidence" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+  it("keeps malformed lock ownership visible without deleting it", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "malformed-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    const unexpectedOwner = join(lockDirectory, "unexpected");
+    await writeFile(unexpectedOwner, "not owner metadata", { mode: 0o600 });
+    const oldDate = new Date(Date.now() - 60_000);
+    await utimes(lockDirectory, oldDate, oldDate);
+    await utimes(unexpectedOwner, oldDate, oldDate);
 
-    handleAgentHookEvent(
-      "PostToolUse",
+    const result = handleAgentHookEvent(
+      "PreToolUse",
       {
-        session_id: "exec-npm-check-evidence",
-        tool_input: { command: "npm run check" },
-        tool_name: "Bash",
-        tool_response: { exit_code: 0 },
+        session_id: payload.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
       },
-      { root, runtime: "codex" }
+      fixture.options
     );
 
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npm run check",
-        domains: ["build", "lint", "test", "typecheck"],
-        kind: "verified-command",
-        outcome: "success",
+    expect(result.output.systemMessage).toContain("invalid session state lock owner");
+    expect(result.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+    expect(existsSync(join(lockDirectory, "unexpected"))).toBe(true);
+  });
+
+  it("rejects a stale commit and preserves the successor lock owner", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "aba-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    const successorToken = "00000000-0000-4000-8000-000000000001";
+    const successorName = `owner-${successorToken}.json`;
+
+    expect(() =>
+      withSessionState(payload, (state) => {
+        const [ownerName] = readdirSync(lockDirectory);
+        const ownerPath = join(lockDirectory, ownerName);
+        const owner = JSON.parse(readFileSync(ownerPath, "utf8"));
+        expect(Object.keys(owner).sort()).toEqual(["acquiredAt", "pid", "token"]);
+        if (process.platform !== "win32") {
+          expect(statSync(lockDirectory).mode % 0o1000).toBe(0o700);
+          expect(statSync(ownerPath).mode % 0o1000).toBe(0o600);
+        }
+
+        unlinkSync(ownerPath);
+        writeFileSync(
+          join(lockDirectory, successorName),
+          `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: process.pid, token: successorToken })}\n`,
+          { mode: 0o600 }
+        );
+        state.turnSequence = 7;
+        return { state };
       })
-    );
+    ).toThrow("lost session state lock ownership");
+
+    expect(readdirSync(lockDirectory)).toEqual([successorName]);
+    expect(existsSync(sessionStatePath(payload))).toBe(false);
+    unlinkSync(join(lockDirectory, successorName));
+    rmdirSync(lockDirectory);
   });
 
-  it("records Claude PostToolUseFailure commands as failed evidence without a tool response", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "run the hook guard",
-      session_id: "claude-post-tool-failure-evidence",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+  it("does not rewrite state for no-op events", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "no-op-state" };
+    refreshSessionState(payload);
+    const file = sessionStatePath(payload);
+    const before = (await stat(file)).mtimeMs;
 
     handleAgentHookEvent(
-      "PostToolUseFailure",
+      "PreToolUse",
       {
-        hook_event_name: "PostToolUseFailure",
-        session_id: "claude-post-tool-failure-evidence",
-        tool_input: { command: "npm run guard:agent" },
-        tool_name: "Bash",
+        session_id: payload.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
       },
-      { root, runtime: "claude" }
+      fixture.options
     );
 
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npm run guard:agent",
-        domains: ["guard"],
-        kind: "failed-command",
-        outcome: "failure",
-      })
-    );
+    expect((await stat(file)).mtimeMs).toBe(before);
   });
 
-  it("records completed GitHub check commands with failing output as failed evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "prove live GitHub checks", session_id: "exec-github-failure" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-github-failure",
-        tool_input: { command: "gh pr view --json statusCheckRollup" },
-        tool_name: "Bash",
-        tool_response: {
-          content: [
-            {
-              text: '{"statusCheckRollup":[{"conclusion":"FAILURE","name":"quality (22)"}]}',
-            },
-          ],
-          exit_code: 0,
-        },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "gh pr view --json statusCheckRollup",
-        domains: ["github-checks"],
-        kind: "failed-command",
-        outcome: "failure",
-      })
-    );
-  });
-
-  it("does not treat successful GitHub checks as failed because a workflow name contains failure", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "prove live GitHub checks", session_id: "exec-github-success-name" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-github-success-name",
-        tool_input: { command: "gh pr view --json statusCheckRollup" },
-        tool_name: "Bash",
-        tool_response: {
-          content: [
-            {
-              text: JSON.stringify({
-                statusCheckRollup: [
-                  {
-                    conclusion: "SUCCESS",
-                    name: "CI Failure Report",
-                    status: "COMPLETED",
-                  },
-                ],
-              }),
-            },
-          ],
-          exit_code: 0,
-        },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "gh pr view --json statusCheckRollup",
-        domains: ["github-checks"],
-        kind: "verified-command",
-        outcome: "success",
-      })
-    );
-  });
-
-  it("records pending GitHub check commands as unresolved evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "prove live GitHub checks", session_id: "exec-github-pending" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-github-pending",
-        tool_input: { command: "gh pr view --json statusCheckRollup" },
-        tool_name: "Bash",
-        tool_response: {
-          content: [
-            {
-              text: JSON.stringify({
-                statusCheckRollup: [
-                  {
-                    name: "quality (22)",
-                    status: "QUEUED",
-                  },
-                ],
-              }),
-            },
-          ],
-          exit_code: 0,
-        },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "gh pr view --json statusCheckRollup",
-        domains: ["github-checks"],
-        kind: "failed-command",
-        outcome: "failure",
-      })
-    );
-  });
-
-  it("parses nested Codex exec output text before recording command evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the check", session_id: "exec-text-evidence" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-text-evidence",
-        tool_input: { command: "npm run guard:agent" },
-        tool_name: "Bash",
-        tool_response: {
-          content: [{ text: "Process exited with code 0\nAGENT_HOOKS_OK" }],
-        },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npm run guard:agent",
-        kind: "verified-command",
-      })
-    );
-  });
-
-  it("recognizes verification evidence behind npx options", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the tests", session_id: "exec-npx-evidence" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-npx-evidence",
-        tool_input: { command: "npx --yes vitest run tests/agent-hooks/agent-hook-core.test.ts" },
-        tool_name: "Bash",
-        tool_response: { exit_code: 0 },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npx --yes vitest run tests/agent-hooks/agent-hook-core.test.ts",
-        domains: ["test"],
-        kind: "verified-command",
-        outcome: "success",
-      })
-    );
-  });
-
-  it("does not record inventory source reads as verification evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "review these hooks", session_id: "source-read-evidence" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "source-read-evidence",
-        tool_input: { command: "sed -n '1,260p' src/cli.ts" },
-        tool_name: "Bash",
-        tool_response: {
-          content: [{ text: "if (failed) {\n  process.exitCode = 2;\n}" }],
-          exit_code: 0,
-        },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("requires shell command-not-found incidents to lead the final response after a retry", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-
-    for (const runtime of ["claude", "codex"]) {
-      const payload = {
-        prompt: "fix the reporting failure",
-        session_id: `shell-command-not-found-${runtime}`,
-        turn_id: "turn-1",
-      };
-      handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime });
-
-      handleAgentHookEvent(
-        runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
-        {
-          ...payload,
-          hook_event_name: runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
-          tool_input: {
-            command: 'rg -n "`next.config.ts`" tools/soleaux',
-          },
-          tool_name: "Bash",
-          ...(runtime === "claude"
-            ? {
-                error: "zsh:1: command not found: next.config.ts",
-                is_interrupt: false,
-              }
-            : {
-                tool_response: {
-                  content: [{ text: "zsh:1: command not found: next.config.ts" }],
-                  exit_code: 127,
-                },
-              }),
-        },
-        { root, runtime }
-      );
-      handleAgentHookEvent(
-        "PostToolUse",
-        {
-          ...payload,
-          tool_input: {
-            command: "rg -n -F 'next.config.ts' tools/soleaux",
-          },
-          tool_name: "Bash",
-          tool_response: {
-            content: [{ text: "tools/soleaux/src/soleaux/frameworks/nextjs.py:1" }],
-            exit_code: 0,
-          },
-        },
-        { root, runtime }
-      );
-
-      expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-        expect.objectContaining({
-          incident: "shell-command-not-found",
-          kind: "tool-incident",
-          outcome: "failure",
-        })
-      );
-
-      const buried = handleAgentHookEvent(
-        "Stop",
-        {
-          ...payload,
-          last_assistant_message: [
-            "The reporting fix is complete.",
-            "One malformed read-only search attempted to execute next.config.ts; it failed without mutation.",
-          ].join("\n\n"),
-        },
-        { root, runtime }
-      );
-      expect(buried.output).toMatchObject({
-        decision: "block",
-        reason: expect.stringContaining("Begin the final response with `Tool incident:`"),
-      });
-
-      const leading = handleAgentHookEvent(
-        "Stop",
-        {
-          ...payload,
-          last_assistant_message: [
-            "Tool incident: zsh attempted to execute next.config.ts and returned command not found.",
-            "Post-command hashes verified no mutation, and the search was rerun safely.",
-            "The reporting fix is complete.",
-          ].join("\n\n"),
-        },
-        { root, runtime }
-      );
-      expect(leading.output).toEqual({});
+  it("inspects state without repairing file mode and preserves malformed warnings", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const valid = { session_id: "read-only-inspection" };
+    refreshSessionState(valid);
+    const validFile = sessionStatePath(valid);
+    if (process.platform !== "win32") {
+      fs.chmodSync(validFile, 0o644);
     }
+
+    const validRecord = inspectSessionState(valid);
+
+    expect(validRecord.found).toBe(true);
+    expect(validRecord.warning).toBeUndefined();
+    expect(validRecord.state.sessionId).toBe(valid.session_id);
+    if (process.platform !== "win32") {
+      expect(statSync(validFile).mode % 0o1000).toBe(0o644);
+    }
+
+    const malformed = { session_id: "read-only-malformed" };
+    const malformedFile = sessionStatePath(malformed);
+    await writeFile(malformedFile, "{not-json", { mode: 0o600 });
+    const malformedRecord = inspectSessionState(malformed);
+
+    expect(malformedRecord.found).toBe(true);
+    expect(malformedRecord.warning).toContain("ignored invalid JSON");
+    expect(malformedRecord.state.sessionId).toBe(malformed.session_id);
+    expect(inspectSessionState({ session_id: "missing-inspection" }).found).toBe(false);
   });
 
-  it("flags a bare tool-incident header lacking attempted-command, impact, and recovery evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "fix the reporting failure",
-      session_id: "shell-command-not-found-bare-header",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+  it("expires state after 24 hours and treats malformed state as empty with a warning", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const expired = { session_id: "expired-state" };
+    refreshSessionState(expired);
+    const expiredFile = sessionStatePath(expired);
+    const expiredValue = JSON.parse(await readFile(expiredFile, "utf8"));
+    expiredValue.updatedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    await writeFile(expiredFile, `${JSON.stringify(expiredValue)}\n`, { mode: 0o600 });
 
+    expect(readSessionState(expired).sessionId).toBe(expired.session_id);
+    expect(existsSync(expiredFile)).toBe(true);
     handleAgentHookEvent(
-      "PostToolUse",
+      "PreToolUse",
       {
-        ...payload,
-        tool_input: {
-          command: 'rg -n "`next.config.ts`" tools/soleaux',
-        },
-        tool_name: "Bash",
-        tool_response: {
-          content: [{ text: "zsh:1: command not found: next.config.ts" }],
-          exit_code: 127,
-        },
+        session_id: expired.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
       },
-      { root, runtime: "codex" }
+      fixture.options
+    );
+    expect(Date.parse(JSON.parse(await readFile(expiredFile, "utf8")).updatedAt)).toBeGreaterThan(
+      Date.parse(expiredValue.updatedAt)
     );
 
-    const bareHeader = handleAgentHookEvent(
-      "Stop",
+    const malformed = { session_id: "malformed-state" };
+    const malformedFile = sessionStatePath(malformed);
+    await mkdir(dirname(malformedFile), { recursive: true, mode: 0o700 });
+    await writeFile(malformedFile, "{not-json", { mode: 0o600 });
+    const result = handleAgentHookEvent(
+      "PreToolUse",
       {
-        ...payload,
-        last_assistant_message: "Tool incident: command not found.",
+        session_id: malformed.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
       },
-      { root, runtime: "codex" }
+      fixture.options
     );
-    expect(bareHeader.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("Begin the final response with `Tool incident:`"),
+    expect(result.output.systemMessage).toContain("ignored invalid JSON");
+    expect(JSON.parse(await readFile(malformedFile, "utf8"))).toMatchObject({
+      sessionId: malformed.session_id,
     });
   });
 
-  it("records native Windows command-not-found diagnostics", async () => {
-    const cases = [
-      {
-        message: "'next.config.ts' is not recognized as an internal or external command",
-        runtime: "claude",
-      },
-      {
-        message:
-          "next.config.ts : The term 'next.config.ts' is not recognized as the name of a cmdlet, function, script file, or operable program.",
-        runtime: "codex",
-      },
-    ];
-
-    for (const { message, runtime } of cases) {
-      const { root, stateDir } = await seededHookRoot();
-      process.env.STATE_DIR = stateDir;
-      const payload = {
-        prompt: "fix the reporting failure",
-        session_id: `windows-command-not-found-${runtime}`,
-      };
-      handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime });
-      handleAgentHookEvent(
-        runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
+  it("bounds state to 20 turns and 50 evidence entries", () => {
+    const at = new Date().toISOString();
+    const turns = Object.fromEntries(
+      Array.from({ length: 25 }, (_, turnIndex) => [
+        `turn-${turnIndex}`,
         {
-          ...payload,
-          hook_event_name: runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
-          tool_input: { command: "next.config.ts" },
-          tool_name: "Bash",
-          ...(runtime === "claude"
-            ? { error: message, is_interrupt: false }
-            : { tool_response: { content: [{ text: message }], exit_code: 1 } }),
+          createdAt: at,
+          evidence: Array.from({ length: 4 }, (_, evidenceIndex) => ({
+            at,
+            domain: `test-${turnIndex}-${evidenceIndex}`,
+            outcome: "failure",
+          })),
         },
-        { root, runtime }
-      );
+      ])
+    );
+    const state = normalizeState(
+      {
+        createdAt: at,
+        currentTurnId: "turn-24",
+        sessionId: "bounded",
+        turnSequence: 25,
+        turns,
+        updatedAt: at,
+      },
+      "bounded"
+    );
 
-      expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-        expect.objectContaining({
-          incident: "shell-command-not-found",
-          kind: "tool-incident",
-          outcome: "failure",
-        })
-      );
-    }
+    expect(Object.keys(state.turns)).toHaveLength(20);
+    expect(Object.values(state.turns).flatMap((turn) => turn.evidence)).toHaveLength(50);
+    expect(state.turns).toHaveProperty("turn-24");
   });
 
-  it("does not promote an ordinary failed source read to a tool incident", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "review these hooks", session_id: "failed-source-read" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+  it("resets and removes lifecycle state without standing context", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "lifecycle" };
 
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "failed-source-read",
-        tool_input: { command: "rg -n -F 'missing literal' scripts/agent-hooks" },
-        tool_name: "Bash",
-        tool_response: { exit_code: 1 },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("does not create failed evidence when command outcome is unavailable", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the check", session_id: "exec-unknown-evidence" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "exec-unknown-evidence",
-        tool_input: { command: "npm run guard:agent" },
-        tool_name: "Bash",
-        tool_response: {},
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("records Claude Bash success from the documented tool_response shape", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "run the guard", session_id: "claude-bash-shape" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "claude-bash-shape",
-        tool_input: { command: "npm run guard" },
-        tool_name: "Bash",
-        tool_response: {
-          interrupted: false,
-          isImage: false,
-          stderr: "",
-          stdout: "ALL_GUARDS_OK\n",
-        },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npm run guard",
-        domains: ["guard"],
-        kind: "verified-command",
-        outcome: "success",
-      })
-    );
-  });
-
-  it("records Codex documented Bash success end-to-end", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "run the test suite",
-      session_id: "codex-bash-shape",
-      turn_id: "turn-1",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "codex-bash-shape",
-        tool_input: { command: "npm run test" },
-        tool_name: "Bash",
-        tool_response: { exit_code: 0 },
-        turn_id: "turn-1",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        command: "npm run test",
-        domains: ["test"],
-        kind: "verified-command",
-        outcome: "success",
-      })
-    );
+    expect(handleSessionLifecycleEvent("SessionStart", payload, fixture.options).stdout).toBe("");
+    expect(existsSync(sessionStatePath(payload))).toBe(true);
+    withSessionState(payload, (state) => {
+      state.turnSequence = 9;
+      return { state };
+    });
+    expect(
+      handleSessionLifecycleEvent("SessionStart", { ...payload, source: "resume" }, fixture.options)
+        .stdout
+    ).toBe("");
+    expect(readSessionState(payload).turnSequence).toBe(0);
+    expect(handleSessionLifecycleEvent("SessionEnd", payload, fixture.options).stdout).toBe("");
+    expect(existsSync(sessionStatePath(payload))).toBe(false);
   });
 });
 
-let sharedSkillRoot: Promise<string> | undefined;
+describe("hook output contracts", () => {
+  it("maps only positive decisions to blocking output", () => {
+    expect(shapeHookResult("PreToolUse", { deny: "unsafe" }).output).toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: "unsafe" },
+    });
+    expect(shapeHookResult("Stop", {}, "codex").stdout).toBe("{}\n");
+  });
+});
 
-async function seededHookRoot(): Promise<{ root: string; stateDir: string }> {
-  const root = await seededSkillRoot();
+interface HookFixture {
+  codexFastmcpSkill: string;
+  fastmcpSkill: string;
+  options: { root: string; runtime: "claude" | "codex" };
+  root: string;
+  skillSource: string;
+  stateDir: string;
+}
+
+async function hookFixture(): Promise<HookFixture> {
+  const root = await mkdtemp(join(tmpdir(), "supa-agent-hook-root-"));
   const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-state-"));
-  return { root, stateDir };
-}
-
-function seededSkillRoot(): Promise<string> {
-  sharedSkillRoot ??= createSeededSkillRoot();
-  return sharedSkillRoot;
-}
-
-async function createSeededSkillRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "supa-agent-hook-core-"));
+  const fastmcpSkill = join(root, ".claude", "skills", "fastmcp", "SKILL.md");
+  const codexFastmcpSkill = join(root, ".agents", "skills", "fastmcp", "SKILL.md");
   await Promise.all([
-    writeSkill(
-      root,
-      "code-atlas",
-      `---
-name: code-atlas
-description: Build and query the local Code Atlas.
-metadata:
-  keywords:
-    - code atlas
-    - code-atlas
-    - code map
-    - repo graph
-    - graph proof
-    - scripts
-  file-triggers:
-    - scripts/code-atlas/**
-    - .mcp.json
-    - fastmcp.json
-    - services/agent-mcp/**
-    - .claude/rules/10-code-atlas.md
-    - .claude/rules/11-agent-mcp-fastmcp.md
-    - scripts/guards/code-atlas/**
-    - scripts/guards/fastmcp/**
-    - scripts/guards/**
----
-
-# Code Atlas
-`
-    ),
-    writeSkill(
-      root,
-      "optimizer",
-      `---
-name: optimizer
-description: Optimize Claude and Codex hooks, skills, and sync.
-metadata:
-  keywords:
-    - agent surface
-    - skill matcher
-    - skill routing
-    - hooks
-    - claude hooks
-    - codex hooks
-    - sync ownership
-    - generated mirrors
-    - package boundary
-    - fastmcp
-    - code atlas
-    - hook enforcer
-  file-triggers:
-    - .claude/skills/**
-    - .claude/agents/**
-    - .agents/prompts/**
-    - skills/supaschema/**
-    - agent-bundle/**
-    - services/agent-mcp/**
-    - scripts/code-atlas/**
-    - scripts/guards/fastmcp/**
-    - scripts/guards/code-atlas/**
-    - .claude/hooks/**
-    - .claude/rules/**
-    - .codex/hooks/**
-    - .codex/hooks.json
----
-
-# Optimizer
-`
-    ),
-    writeSkill(
-      root,
-      "fastmcp",
-      `---
-name: fastmcp
-description: Maintain the local FastMCP server.
-metadata:
-  keywords:
-    - fastmcp
-    - mcp
-    - repo mcp
-    - agent mcp
-    - supaschema mcp
-  file-triggers:
-    - services/agent-mcp/**
-    - fastmcp.json
-    - .mcp.json
-    - .codex/config.toml
-    - .claude/rules/11-agent-mcp-fastmcp.md
-    - scripts/guards/fastmcp/**
-    - scripts/code-atlas/**
----
-
-# FastMCP
-`
-    ),
-    writeSkill(
-      root,
-      "adversarial-verification",
-      `---
-name: adversarial-verification
-description: Use when verifying implementation work without superficial approval.
-metadata:
-  keywords:
-    - adversarial
-    - verification
----
-
-# Adversarial Verification
-`
-    ),
-    writeSkill(
-      root,
-      "task-creator",
-      `---
-name: task-creator
-description: Create validated task lists and implementation plans.
-metadata:
-  keywords:
-    - task
-    - plan
----
-
-# Task Creator
-`
-    ),
-    writeSkill(
-      root,
-      "supaschema",
-      `---
-name: supaschema
-description: Generate, check, and verify supaschema migrations.
-metadata:
-  keywords:
-    - verify
-    - migration
----
-
-# Supaschema
-`
-    ),
-    writeSkill(
-      root,
-      "update",
-      `---
-name: update
-description: Audit and update repo documentation and generated mirrors.
-metadata:
-  keywords:
-    - update
-    - repo documentation
----
-
-# Update
-`
-    ),
+    mkdir(dirname(fastmcpSkill), { recursive: true }),
+    mkdir(dirname(codexFastmcpSkill), { recursive: true }),
   ]);
-  return root;
-}
-
-async function runHookEventInChild(
-  eventName: string,
-  payload: Record<string, unknown>,
-  root: string,
-  stateDir: string
-): Promise<void> {
-  const script = [
-    "import { handleAgentHookEvent } from './scripts/agent-hooks/runner.mjs';",
-    "const result = handleAgentHookEvent(process.argv[1], JSON.parse(process.argv[2]), { root: process.argv[3], runtime: 'codex' });",
-    "if (result.stdout) process.stdout.write(result.stdout);",
-    "if (result.stderr) process.stderr.write(result.stderr);",
-    "process.exit(result.exitCode);",
+  const skillSource = [
+    "---",
+    "name: fastmcp",
+    "description: Maintain the local FastMCP server.",
+    "metadata:",
+    "  keywords:",
+    '    - "fast mcp"',
+    "---",
+    "",
+    "# FastMCP",
+    "",
+    "Use the parser-backed workflow.",
+    "",
   ].join("\n");
-  await new Promise<void>((resolvePromise, reject) => {
-    execFile(
-      process.execPath,
-      ["--input-type=module", "-e", script, eventName, JSON.stringify(payload), root],
-      { env: { ...process.env, STATE_DIR: stateDir } },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(`${stderr}${stdout}`));
-          return;
-        }
-        resolvePromise();
-      }
-    );
-  });
-}
-
-async function writeSkill(root: string, name: string, text: string): Promise<void> {
   await Promise.all([
-    write(root, `.claude/skills/${name}/SKILL.md`, text),
-    write(root, `.agents/skills/${name}/SKILL.md`, text),
+    writeFile(fastmcpSkill, skillSource),
+    writeFile(codexFastmcpSkill, skillSource),
   ]);
+  return {
+    codexFastmcpSkill,
+    fastmcpSkill,
+    options: { root, runtime: "claude" },
+    root,
+    skillSource,
+    stateDir,
+  };
 }
 
-async function write(root: string, relativePath: string, text: string): Promise<void> {
-  const file = join(root, relativePath);
-  await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, text);
+function postTool(
+  sessionId: string,
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  fixture: HookFixture,
+  toolResponse: unknown = {}
+) {
+  return handleAgentHookEvent(
+    "PostToolUse",
+    {
+      hook_event_name: "PostToolUse",
+      session_id: sessionId,
+      tool_input: toolInput,
+      tool_name: toolName,
+      tool_response: toolResponse,
+    },
+    fixture.options
+  );
 }
 
-describe("shell command-not-found diagnostics", () => {
-  it("recognizes path-qualified shell prefixes such as /bin/bash and /usr/bin/zsh", async () => {
-    const { shellCommandNotFound } = await import(
-      "../../scripts/agent-hooks/response-evidence.mjs"
-    );
-    const cases = [
-      { error: "/bin/bash: line 1: foo: command not found", tool_response: {} },
-      { error: "/usr/bin/zsh:1: command not found: foo", tool_response: {} },
-      { error: "bash: line 1: foo: command not found", tool_response: {} },
-      { error: "zsh:1: command not found: foo", tool_response: {} },
-    ];
-    for (const payload of cases) {
-      expect(shellCommandNotFound(payload), JSON.stringify(payload)).toBe(true);
-    }
-    expect(shellCommandNotFound({ error: "some other failure", tool_response: {} })).toBe(false);
-  });
-});
+function failedCommand(sessionId: string, command: string, fixture: HookFixture) {
+  return handleAgentHookEvent(
+    "PostToolUseFailure",
+    {
+      hook_event_name: "PostToolUseFailure",
+      session_id: sessionId,
+      tool_input: { command },
+      tool_name: "Bash",
+    },
+    fixture.options
+  );
+}
+
+function successfulCommand(
+  sessionId: string,
+  command: string,
+  fixture: HookFixture,
+  toolResponse: Record<string, unknown> = {}
+) {
+  return postTool(sessionId, "Bash", { command }, fixture, toolResponse);
+}
+
+function stop(sessionId: string, message: string, fixture: HookFixture) {
+  return handleAgentHookEvent(
+    "Stop",
+    { last_assistant_message: message, session_id: sessionId },
+    fixture.options
+  );
+}

@@ -25,12 +25,12 @@ npm exec -- supaschema init
 
 Package installation downloads the CLI, config schema, and agent bundle. `init` then detects the consuming project and installs or merges the active config, directories, scripts, and AI-agent surfaces. It is safe to rerun after upgrades.
 
-| Manager | Install command | Setup command | Run command |
-| --- | --- | --- | --- |
-| npm | `npm install supaschema` | `npm exec -- supaschema init` | `npm exec -- supaschema <cmd>` |
-| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
-| Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
-| Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
+| Manager | Install command          | Setup command                         | Run command                            |
+| ------- | ------------------------ | ------------------------------------- | -------------------------------------- |
+| npm     | `npm install supaschema` | `npm exec -- supaschema init`         | `npm exec -- supaschema <cmd>`         |
+| pnpm    | `pnpm add supaschema`    | `pnpm exec supaschema init`           | `pnpm exec supaschema <cmd>`           |
+| Yarn    | `yarn add supaschema`    | `yarn exec supaschema init`           | `yarn exec supaschema <cmd>`           |
+| Bun     | `bun add supaschema`     | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
 
 supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, and coding-agent enforcement bundle are part of the consuming repo's migration workflow.
 
@@ -91,12 +91,9 @@ SUPASCHEMA_DATABASE_URL="postgres://..." <local-runner> diff
 
 Use named environments only when you need an additional named target. Do not create a second credential variable just for supaschema when an application database URL variable already exists.
 
-<Warning>
-  A database URL does not authorize an apply. supaschema keeps apply fail-closed
-  until `workflow.migration_sync` permits it, exactly one configured sync target
-  selects apply mode, verification succeeds, and any remote approval variable is
-  present. Without that explicit policy, `sync` remains a dry run.
-</Warning>
+:::warning
+A database URL does not authorize an apply. supaschema keeps apply fail-closed until `workflow.migration_sync` permits it, exactly one configured sync target selects apply mode, verification succeeds, and any remote approval variable is present. Without that explicit policy, `sync` remains a dry run.
+:::
 
 ## Next steps
 

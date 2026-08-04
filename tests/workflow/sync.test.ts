@@ -1045,6 +1045,11 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
           resolveConfig(config)
         );
         expect(resolved.from).toBe("git:INDEX");
+        const driftResolved = await resolveGenerationSourceDefaults(
+          { cwd: root, migrationsDir, mode: "drift" },
+          resolveConfig(config)
+        );
+        expect(driftResolved.from).toBe("git:HEAD");
         const second = await syncMigrations({ config, directory: migrationsDir, pipeline: true });
         expect(second.diagnostics.map((item) => item.code)).not.toContain(
           "SUPA_MIGRATION_BASELINE_MISMATCH"

@@ -501,12 +501,13 @@
       "properties": {
         "from": {
           "default": "auto",
-          "description": "Default before-state source. For generation, \"auto\" resolves git:HEAD as a candidate baseline, then empty: only for a first migration with no existing migration corpus. Existing generated migrations must prove the same baseline through lineage.",
+          "description": "Default before-state source. For generation, \"auto\" uses a proven git:INDEX closure, replays migrations:<migrationsDir> for adoption or a hand-authored tail, uses git:HEAD only for contiguous lineage, and uses empty: only when no migration corpus exists.",
           "examples": [
             "auto",
             "git:HEAD",
             "empty:",
             "dir:baseline/schemas",
+            "migrations:supabase/migrations",
             "database:$DATABASE_URL"
           ],
           "oneOf": [
@@ -524,7 +525,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Default before source for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist.",
+      "description": "Default before source for zero-source-flag diff, plan, and verify. For generation, sources.from:auto uses a proven staged closure, replays the configured migration corpus for adoption or a manual tail, and uses git:HEAD only for contiguous lineage.",
       "examples": [
         {
           "from": "auto"

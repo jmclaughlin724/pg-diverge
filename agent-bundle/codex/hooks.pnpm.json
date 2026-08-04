@@ -10,15 +10,15 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch"
+        "matcher": "apply_patch"
       }
     ],
     "PreToolUse": [
       {
         "hooks": [
           {
-            "command": "pnpm exec supaschema hook generated-migration-edit --runtime codex",
-            "statusMessage": "Checking supaschema generated-migration policy",
+            "command": "pnpm exec supaschema hook generated-artifact-edit --runtime codex",
+            "statusMessage": "Checking supaschema generated-artifact policy",
             "timeout": 10,
             "type": "command"
           }

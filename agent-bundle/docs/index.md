@@ -2,9 +2,8 @@
 
 - [agent-bundle/docs/benchmarks.mdx](https://supaschema.com/docs/benchmarks)
 - [agent-bundle/docs/case-study-anilize.mdx](https://supaschema.com/docs/case-study-anilize)
-- [agent-bundle/docs/coding-agents.mdx](https://supaschema.com/docs/coding-agents)
 - [agent-bundle/docs/coding-agents/agent-bundle.mdx](https://supaschema.com/docs/coding-agents/agent-bundle)
-- [agent-bundle/docs/commands.mdx](https://supaschema.com/docs/commands)
+- [agent-bundle/docs/coding-agents/index.mdx](https://supaschema.com/docs/coding-agents/index)
 - [agent-bundle/docs/commands/apply.mdx](https://supaschema.com/docs/commands/apply)
 - [agent-bundle/docs/commands/audit.mdx](https://supaschema.com/docs/commands/audit)
 - [agent-bundle/docs/commands/check.mdx](https://supaschema.com/docs/commands/check)
@@ -16,6 +15,7 @@
 - [agent-bundle/docs/commands/doctor.mdx](https://supaschema.com/docs/commands/doctor)
 - [agent-bundle/docs/commands/explain.mdx](https://supaschema.com/docs/commands/explain)
 - [agent-bundle/docs/commands/fingerprint.mdx](https://supaschema.com/docs/commands/fingerprint)
+- [agent-bundle/docs/commands/index.mdx](https://supaschema.com/docs/commands/index)
 - [agent-bundle/docs/commands/init.mdx](https://supaschema.com/docs/commands/init)
 - [agent-bundle/docs/commands/inspect.mdx](https://supaschema.com/docs/commands/inspect)
 - [agent-bundle/docs/commands/migrations.mdx](https://supaschema.com/docs/commands/migrations)

@@ -8,6 +8,7 @@ import {
   refIdentity,
   tableRefIdentity,
 } from "../sql/dependents.js";
+import { rlsStateFromObjectMetadata } from "../sql/rls.js";
 import type { RoutineDependencyConfidence } from "../sql/routine-dependencies.js";
 import type {
   Diagnostic,
@@ -135,10 +136,24 @@ function appendChangedAndDroppedOperations(
         continue;
       }
       operations.push(makeOperation("drop", key, before, undefined, config, migrationCorpus));
-    } else if (before.hash !== after.hash) {
+    } else if (before.hash !== after.hash && !sameRlsState(before, after)) {
       operations.push(makeChangedOperation(key, before, after, config, migrationCorpus));
     }
   }
+}
+
+function sameRlsState(before: SchemaObject, after: SchemaObject): boolean {
+  if (before.ref.kind !== "rls" || after.ref.kind !== "rls") {
+    return false;
+  }
+  const beforeState = rlsStateFromObjectMetadata(before.metadata);
+  const afterState = rlsStateFromObjectMetadata(after.metadata);
+  return (
+    beforeState !== undefined &&
+    afterState !== undefined &&
+    beforeState.rlsEnabled === afterState.rlsEnabled &&
+    beforeState.rlsForced === afterState.rlsForced
+  );
 }
 
 function makeChangedOperation(
@@ -852,7 +867,7 @@ function emptyPlanDriftDiagnostic(
     const after = toMap.get(key);
     if (!after) {
       differing.push(`missing in target: ${key}`);
-    } else if (before.hash !== after.hash) {
+    } else if (before.hash !== after.hash && !sameRlsState(before, after)) {
       differing.push(`hash drift: ${key}`);
     }
   }

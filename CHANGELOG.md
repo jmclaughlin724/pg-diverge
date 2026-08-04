@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.6 (2026-08-02)
+
+### Patch Changes
+
+- Make `sources.from: auto` prove lineage contiguity before selecting `git:HEAD`. When a generated baseline exists but no committed tree reproduces its fingerprint — the state left behind when a schema tree keeps moving after a migration is generated but before it is committed — `auto` now replays `migrations:<migrationsDir>` instead of selecting a `git:HEAD` it can already tell will fail the baseline gate. This matches the documented contract that `auto` "uses git:HEAD only for contiguous lineage" and mirrors the proof the staged `git:INDEX` lane already performs.
+
+  Previously that state raised `SUPA_MIGRATION_BASELINE_MISMATCH` with no reachable recovery: the baseline was unreproducible from any commit, `diff --replace` only accepts unapplied generated migrations, and delete-and-regenerate requires that no target records the migration as applied. The mismatch hint now names the replay lane and defers the delete-and-regenerate remedy to a confirmed `supaschema migrations` applied-history check, and `migrations:<dir>` is listed in the `sources.from` schema examples.
+
+- 5b9f2f1: Make the bundled Claude rule consumer-safe: point source-boundary guidance at the packaged offline `agent-bundle/docs/concepts/sources.mdx` instead of implementation-repo paths, and scope the `src/sql/support.ts` wiring and `npm run typecheck` verification requirements to developing supaschema itself, with consumer projects directed to the packaged docs, `supaschema explain`, and their own package scripts.
+- 9a2611f: Fix unbalanced parenthesized column DEFAULT expressions in extraction: PostgreSQL reports the expression location after the opening paren, so rendered ALTER COLUMN ... SET DEFAULT statements kept the closing paren but dropped the opening one, producing SQL that failed replay checks with a syntax error (SUPA_PARSE_ERROR). The slice now re-extends across enclosing parens.
+- 7fda852: Stamp generated TypeScript and Zod contracts with a provenance header (generator version, schema model fingerprint, regeneration command; unreleased builds also record their commit) and add `supaschema types --check`, a no-write drift gate that compares regenerated contracts against on-disk outputs and fails with `SUPA_TYPES_CONTRACT_DRIFT` (exit 2) when a contract is missing or would change.
+- Harden release and agent boundaries: make session-state locks atomic and owner-aware, keep skill discovery outside the shared lock, recognize GNU and BSD in-place `sed` writes, redact secrets across arbitrary command whitespace, restrict consumer-canary credentials to the exact GitHub HTTPS host, smoke immutable snapshot versions, and recover numeric snapshot commit identifiers deterministically.
+
+  Separate OAuth state from entitlement tokens with purpose-bound signed-token types, random nonces, and browser-bound callback cookies. Use GitHub App installation permissions for private repositories without requesting the broad classic OAuth `repo` scope, and derive subscription token expiry from Stripe Basil paid-through timestamps with price matching, monotonic renewal, and invoice replay protection.
+
+- 7fda852: Embed build identity (version, commit, build time, tree state) in the published package as `dist/build-info.json`, report it in `supaschema doctor`, and warn on stderr when the CLI runs as an unreleased build or from a checkout whose compiled `dist` is older than `src` (`SUPA_BUILD_STALE_DIST`). `--version` output is unchanged; the warnings never fail the command and can be suppressed with `--quiet` or `SUPASCHEMA_SUPPRESS_BUILD_WARNING=1`.
+- 7fda852: Publish immutable `X.Y.(Z+1)-dev.<sha>` snapshot builds to the npm `next` dist-tag on every protected `main` push via a new `snapshot.yml` workflow (OIDC trusted publishing, provenance attestation, post-publish registry smoke). Stable releases on `latest` are unchanged. Consumers can now dogfood the current main build as an exact version pin instead of linking a local checkout. Requires a one-time npm trusted publisher entry for `snapshot.yml`; see the release docs.
+
 ## 0.5.5 (2026-07-28)
 
 ### Breaking Changes

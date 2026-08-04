@@ -32,39 +32,39 @@ import {
 
 ## Core pipeline
 
-| Export | Maps to | Purpose |
-| --- | --- | --- |
-| `extractSourceModel` | `inspect` | Parse any source (`dir:`, `git:`, `database:`, `dump:`, `catalog:`) into a `SchemaModel`. |
-| `extractCatalogModel` | `inspect` | Read a live `pg_catalog` (read-only) into a `SchemaModel`. |
-| `planSchemaDiff` | `plan` | Diff two models into a `MigrationPlan` of ordered, dependency-aware operations. |
-| `renderMigration` / `renderMigrationSplit` | `diff` | Render a plan to guarded SQL; the split form separates a `concurrentSql` companion for `CREATE INDEX CONCURRENTLY` when `transactionMode` is `per-statement`. |
-| `checkMigrationSql` | `check` | Static replay-safety and lock-hazard diagnostics for any migration SQL. |
-| `verifyMigration` | `verify` | The apply-twice proof in throwaway databases, plus the reconvergence cross-check. |
+| Export                                     | Maps to   | Purpose                                                                                                                                                       |
+| ------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `extractSourceModel`                       | `inspect` | Parse any source (`dir:`, `git:`, `database:`, `dump:`, `catalog:`) into a `SchemaModel`.                                                                     |
+| `extractCatalogModel`                      | `inspect` | Read a live `pg_catalog` (read-only) into a `SchemaModel`.                                                                                                    |
+| `planSchemaDiff`                           | `plan`    | Diff two models into a `MigrationPlan` of ordered, dependency-aware operations.                                                                               |
+| `renderMigration` / `renderMigrationSplit` | `diff`    | Render a plan to guarded SQL; the split form separates a `concurrentSql` companion for `CREATE INDEX CONCURRENTLY` when `transactionMode` is `per-statement`. |
+| `checkMigrationSql`                        | `check`   | Static replay-safety and lock-hazard diagnostics for any migration SQL.                                                                                       |
+| `verifyMigration`                          | `verify`  | The apply-twice proof in throwaway databases, plus the reconvergence cross-check.                                                                             |
 
 ## Operations and state
 
-| Export | Maps to | Purpose |
-| --- | --- | --- |
-| `migrationsStatus` / `renderMigrationsStatus` | `migrations` | Reconcile disk files against a database target's applied history, with optional target/runner labels and expected final versions. |
-| `compareMigrationHistory` / `migrationFileVersions` | `migrations` | Compare expected migration versions with applied history for post-run target verification. |
-| `runDirectMigrationRunner` / `runSupabaseCliMigrationRunner` | `sync` | Apply pending migration units through direct PostgreSQL or the Supabase CLI adapter. |
-| `runTypeSafetyGate` / `runRlsSafetyGate` | `sync` | Run deploy-safety policy gates without depending on the standalone `type-contract` report command. |
-| `syncMigrations` | `sync` | Gate pending migrations, then optionally drive the selected runner. |
-| `auditModel` / `renderAuditReport` | `audit` | Support-matrix coverage report for adopting an existing schema. |
-| `runCorpus` / `renderCorpusReport` | `corpus` | Replay a corpus tree and require reconvergence to zero. |
-| `collectSchemaShapes` / `generateDatabaseTypes` / `generateZodSchemas` | `types` | Collect one schema shape graph, then generate upstream-compatible TypeScript database types plus separate runtime Zod validators from the PostgreSQL schema model. |
+| Export                                                                 | Maps to      | Purpose                                                                                                                                                            |
+| ---------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `migrationsStatus` / `renderMigrationsStatus`                          | `migrations` | Reconcile disk files against a database target's applied history, with optional target/runner labels and expected final versions.                                  |
+| `compareMigrationHistory` / `migrationFileVersions`                    | `migrations` | Compare expected migration versions with applied history for post-run target verification.                                                                         |
+| `runDirectMigrationRunner` / `runSupabaseCliMigrationRunner`           | `sync`       | Apply pending migration units through direct PostgreSQL or the Supabase CLI adapter.                                                                               |
+| `runTypeSafetyGate` / `runRlsSafetyGate`                               | `sync`       | Run deploy-safety policy gates without depending on the standalone `type-contract` report command.                                                                 |
+| `syncMigrations`                                                       | `sync`       | Gate pending migrations, then optionally drive the selected runner.                                                                                                |
+| `auditModel` / `renderAuditReport`                                     | `audit`      | Support-matrix coverage report for adopting an existing schema.                                                                                                    |
+| `runCorpus` / `renderCorpusReport`                                     | `corpus`     | Replay a corpus tree and require reconvergence to zero.                                                                                                            |
+| `collectSchemaShapes` / `generateDatabaseTypes` / `generateZodSchemas` | `types`      | Collect one schema shape graph, then generate upstream-compatible TypeScript database types plus separate runtime Zod validators from the PostgreSQL schema model. |
 
 Pass `{ postgrestVersion: "12" }` as the second argument to `generateDatabaseTypes` to include `Database.__InternalSupabase.PostgrestVersion`; omit it when the generated contract should not own a PostgREST version.
 
 ## Support utilities
 
-| Export | Purpose |
-| --- | --- |
-| `loadConfig` / `resolveConfig` / `defaultConfig` / `supaschemaConfigSchema` / `configJsonSchema` / `validateConfig` | Load, validate, and describe `supaschema.config.json` (the Zod and JSON Schema surfaces are exported). |
-| `SupaschemaWorkflow` / `SchemaDiffPolicy` / `MigrationCheckPolicy` / `MigrationVerifyPolicy` / `MigrationSyncPolicy` / `GeneratedOutputPolicy` / `TypeUsagePolicy` | Typed names for the `workflow.*` config policy values. |
-| `resolveDatabaseUrl` / `resolveSupabaseLocalDatabaseUrl` / `resolveVerificationDatabaseUrl` | The [URL resolution lanes](/configuration/environments), including least-privilege target discovery and verification-specific local Supabase admin discovery. |
-| `parseLineage` / `latestLineage` / `lineageLine` | Read and produce the `-- supaschema: lineage` markers that chain migrations. |
-| `runConfiguredValidators` | Run the configured external validators (`squawk`, `sqlfluff`, …) against SQL. |
+| Export                                                                                                                                                             | Purpose                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loadConfig` / `resolveConfig` / `defaultConfig` / `supaschemaConfigSchema` / `configJsonSchema` / `validateConfig`                                                | Load, validate, and describe `supaschema.config.json` (the Zod and JSON Schema surfaces are exported).                                                        |
+| `SupaschemaWorkflow` / `SchemaDiffPolicy` / `MigrationCheckPolicy` / `MigrationVerifyPolicy` / `MigrationSyncPolicy` / `GeneratedOutputPolicy` / `TypeUsagePolicy` | Typed names for the `workflow.*` config policy values.                                                                                                        |
+| `resolveDatabaseUrl` / `resolveSupabaseLocalDatabaseUrl` / `resolveVerificationDatabaseUrl`                                                                        | The [URL resolution lanes](/configuration/environments), including least-privilege target discovery and verification-specific local Supabase admin discovery. |
+| `parseLineage` / `latestLineage` / `lineageLine`                                                                                                                   | Read and produce the `-- supaschema: lineage` markers that chain migrations.                                                                                  |
+| `runConfiguredValidators`                                                                                                                                          | Run the configured external validators (`squawk`, `sqlfluff`, …) against SQL.                                                                                 |
 
 All exports ship TypeScript types, including `SchemaModel`, `MigrationPlan`, `SyncOptions`, and `CorpusReport`.
 

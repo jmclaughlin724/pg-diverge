@@ -34,6 +34,32 @@ export interface ObjectRef {
   table?: string;
 }
 
+export type CommentTargetKind =
+  | "column"
+  | "constraint"
+  | "domain"
+  | "extension"
+  | "foreign-table"
+  | "function"
+  | "index"
+  | "materialized-view"
+  | "policy"
+  | "procedure"
+  | "schema"
+  | "sequence"
+  | "table"
+  | "trigger"
+  | "type"
+  | "view";
+
+export interface CommentTarget {
+  kind: CommentTargetKind;
+  name: string;
+  schema?: string;
+  signature?: string;
+  table?: string;
+}
+
 export interface Diagnostic {
   code: string;
   file?: string;

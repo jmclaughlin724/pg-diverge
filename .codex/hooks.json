@@ -11,7 +11,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch|mcp__.*"
+        "matcher": "Bash|Read|Skill"
       },
       {
         "hooks": [
@@ -19,18 +19,6 @@
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-source-hook.mjs\" hook schema-write",
             "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/supaschema-source-hook.mjs\" hook schema-write",
             "statusMessage": "Running supaschema auto-diff on schema change",
-            "timeout": 130,
-            "type": "command"
-          }
-        ],
-        "matcher": "Bash|apply_patch"
-      },
-      {
-        "hooks": [
-          {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "statusMessage": "Syncing supaschema Claude agent surfaces",
             "timeout": 130,
             "type": "command"
           }
@@ -49,14 +37,14 @@
             "type": "command"
           }
         ],
-        "matcher": ".*"
+        "matcher": "Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch"
       },
       {
         "hooks": [
           {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-source-hook.mjs\" hook generated-migration-edit --runtime codex",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/supaschema-source-hook.mjs\" hook generated-migration-edit --runtime codex",
-            "statusMessage": "Checking supaschema generated-migration policy",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-source-hook.mjs\" hook generated-artifact-edit --runtime codex",
+            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/supaschema-source-hook.mjs\" hook generated-artifact-edit --runtime codex",
+            "statusMessage": "Checking supaschema generated-artifact policy",
             "timeout": 10,
             "type": "command"
           }
@@ -70,7 +58,7 @@
           {
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/context-session-start.mjs\"",
             "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/context-session-start.mjs\"",
-            "statusMessage": "Loading supaschema agent context",
+            "statusMessage": "Refreshing agent hook state",
             "timeout": 10,
             "type": "command"
           }
@@ -125,13 +113,6 @@
             "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/context-stop.mjs\"",
             "statusMessage": "Checking supaschema final-response evidence",
             "timeout": 10,
-            "type": "command"
-          },
-          {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "statusMessage": "Syncing supaschema Claude agent surfaces",
-            "timeout": 130,
             "type": "command"
           }
         ]

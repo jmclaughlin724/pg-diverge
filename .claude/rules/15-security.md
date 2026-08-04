@@ -14,7 +14,7 @@ paths:
   - ".codex/**"
 ---
 
-# Rule 15 — Security
+# Rule 15 - Security
 
 ## Contract
 
@@ -43,7 +43,7 @@ This rule owns the repo-wide security baseline: no secrets in source, commands, 
 | Webhook/Auth Hook | raw-body signature verification before parse, replay/idempotency behavior |
 | MCP/FastMCP | deny-list coverage, read-only proof, no secret paths |
 | Package/docs example | no real credentials, dry-run tarball/docs check where applicable |
-| CI/release | OIDC/provenance/token posture per Rule 09 |
+| CI/release | OIDC/provenance/token posture |
 
 ## Verification
 

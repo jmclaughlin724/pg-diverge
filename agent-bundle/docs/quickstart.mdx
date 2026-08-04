@@ -92,13 +92,9 @@ The commands below use npm's local runner. Use the matching pnpm, Yarn, or Bun r
     npm exec -- supaschema apply
     ```
 
-    <Warning>
-      If `check` reports issues, review the flagged statements before applying
-      the migration. A database URL alone does not enable apply: `sync` stays a
-      dry run until config selects exactly one apply target, the migration policy
-      permits apply, verification passes, and any remote approval is present.
-      supaschema fails closed when it cannot prove safety.
-    </Warning>
+:::warning
+If `check` reports issues, review the flagged statements before applying the migration. A database URL alone does not enable apply: `sync` stays a dry run until config selects exactly one apply target, the migration policy permits apply, verification passes, and any remote approval is present. supaschema fails closed when it cannot prove safety.
+:::
 
   </Step>
 </Steps>

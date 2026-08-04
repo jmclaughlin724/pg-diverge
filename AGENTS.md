@@ -10,12 +10,13 @@ Read only the rules and skills directly applicable to the current task.
 
 | When the task concerns | Canonical owner |
 | --- | --- |
-| General operating discipline, gates, `$elegant`, enforcement closure, npm-only tooling, or closeout | `.claude/rules/01-operating-rules.md` |
+| General operating discipline, gates, `$elegant`, enforcement closure, or closeout | `.claude/rules/01-operating-rules.md` |
+| Public Blume docs pages under `docs/`, their writing standard, or their components | `.claude/rules/02-blume-writing-standards.md`, `.claude/rules/03-blume-component-reference.md` |
 | Technical decisions, upstream research, evidence fallbacks, or escalation | `.claude/rules/05-decision-protocol.md` |
+| Repository discovery, LSP coverage, formatter and linter ownership, or npm-only tooling | `.claude/rules/06-multi-language-toolchain.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
-| Repository graph, dependency, consumer, route, owner, or impact discovery | `.claude/rules/10-code-atlas.md` |
 | Agent MCP or FastMCP behavior and public surfaces | `.claude/rules/11-agent-mcp-fastmcp.md` |
-| Skill loading, hook context, observable loading, enforcement, or hook state | `.claude/rules/12-skill-loading-enforcement.md` |
+| Hook enforcement boundaries (Bash safety, verification conflicts, lifecycle silence) | `.claude/rules/12-skill-loading-enforcement.md` |
 | Package exports, npm package boundaries, or public consumers | `.claude/rules/13-npm-package-boundary.md` |
 | Editing safety, deletions, or required removal sweeps | `.claude/rules/14-editing-safety.md` |
 | Agent instructions, prompts, tool routing, or response standards | `.claude/rules/17-prompt-craft-standards.md` |
@@ -56,8 +57,8 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 
 Implement the requested behavior using the simplest maintainable approach that fits the existing repository.
 
-- Follow established local architecture, naming, contracts, frameworks, and helper APIs.
-- Read enough surrounding code to understand the affected behavior and ownership boundary, then stop exploring.
+- Follow established architecture, naming, contracts, and frameworks as defined by rules.
+- Absorb enough surrounding code to understand the affected behavior and ownership boundary, then stop exploring.
 - Keep changes within the smallest practical behavioral and ownership surface.
 - Prefer clear names, strong types, simple control flow, minimal mutation, and focused functions.
 - Prefer direct implementations over speculative frameworks or generalized infrastructure.
@@ -65,7 +66,6 @@ Implement the requested behavior using the simplest maintainable approach that f
 - Add an abstraction only when it removes meaningful complexity or duplication or clearly matches an established repository pattern.
 - Preserve existing public contracts unless the requested work explicitly replaces them.
 - Avoid unrelated refactoring, formatting churn, file movement, metadata changes, and opportunistic cleanup.
-- Add comments only when they explain non-obvious intent, constraints, or behavior.
 
 Avoid:
 
@@ -113,13 +113,11 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 3. **Architecture decisions** - Component structure, data flow, and API design
 4. **Edge cases** - Handle boundary conditions and error states
 5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
+6. **Documentation** - Prefer self-documenting code
 
 ## Discovery
 
 Begin with the smallest relevant file, symbol, route, package, test, diff, log, or command.
-
-Use Code Atlas according to `.claude/rules/10-code-atlas.md` when the task requires repository-wide dependency, ownership, consumer, route, or impact discovery.
 
 Use focused source searches when the location or symbol is already known.
 
@@ -130,6 +128,8 @@ Do not dump full repositories, generated trees, large logs, minified files, data
 Read applicable instruction files, rules, skills, and tool documentation completely unless a file is unexpectedly large.
 
 ## Editing
+
+Review the available tools and the owning context, and complete the research the change depends on, before writing anything. `.claude/rules/05-decision-protocol.md` owns that gate.
 
 Follow `.claude/rules/14-editing-safety.md` for editing and deletion requirements.
 

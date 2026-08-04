@@ -37,8 +37,8 @@ const lintOne = async (file: string, contents: string) => {
 };
 
 const localRunnerDocsPages = [
-  "coding-agents",
   "coding-agents/agent-bundle",
+  "coding-agents/index",
   "installation",
   "quickstart",
   "reference/package-boundary",
@@ -72,17 +72,6 @@ function localRunnerFixtureFiles(overrides: Record<string, string> = {}) {
     "AGENTS.md": "Use the package manager local runner.\n",
     "bin/scaffold.mjs": "export {};\n",
     "CLAUDE.md": "Use the package manager local runner.\n",
-    "docs/docs.json": JSON.stringify({
-      $schema: "https://mintlify.com/docs.json",
-      colors: { primary: "#1D4ED8" },
-      contextual: {
-        options: ["copy", "view", "chatgpt", "claude", "mcp", "add-mcp", "cursor", "vscode"],
-      },
-      icons: { library: "lucide" },
-      name: "supaschema",
-      navigation: { groups: [{ group: "Start", pages: localRunnerDocsPages }] },
-      theme: "luma",
-    }),
     "README.md": "Use the package manager local runner.\n",
     ...Object.fromEntries(
       localRunnerDocsPages.map((route) => [`docs/${route}.mdx`, page("## Start")])
@@ -187,59 +176,21 @@ plain output
     expect(violations.map((violation) => violation.rule)).toEqual(["code-fence-language"]);
   });
 
-  it("requires ParamField on command pages with Flags or Options sections", async () => {
-    const missing = await lintOne(
-      "docs/commands/example.mdx",
-      page(`
-## Flags
-
-- \`--from\`
-`)
-    );
-    const present = await lintOne(
-      "docs/commands/example.mdx",
-      page(`
-## Options
-
-<ParamField path="--from" type="source">
-  Source.
-</ParamField>
-`)
-    );
-
-    expect(missing.map((violation) => violation.rule)).toEqual(["component"]);
-    expect(present).toEqual([]);
-  });
-
-  it("validates docs.json navigation and allows hidden unlisted pages", async () => {
-    const root = await writeDocs({
-      "docs/docs.json": JSON.stringify({
-        $schema: "https://mintlify.com/docs.json",
-        colors: { primary: "#1D4ED8" },
-        contextual: {
-          options: ["copy", "view", "chatgpt", "claude", "mcp", "add-mcp", "cursor", "vscode"],
-        },
-        icons: { library: "lucide" },
-        name: "supaschema",
-        navigation: { groups: [{ group: "Start", pages: ["page"] }] },
-        theme: "luma",
-      }),
-      "docs/hidden.mdx": `---
+  it("accepts Blume sidebar and hidden frontmatter", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      `---
 title: "Hidden"
 description: "Hidden page."
 keywords: ["hidden", "docs"]
 hidden: true
+sidebar:
+  label: "Hidden"
 ---
 
 ## Hidden
-`,
-      "docs/page.mdx": page("## Start"),
-    });
-
-    const violations = lintDocsStandard({
-      files: ["docs/page.mdx", "docs/hidden.mdx"],
-      rootDir: root,
-    });
+`
+    );
 
     expect(violations).toEqual([]);
   });
@@ -251,9 +202,8 @@ hidden: true
 title: "Test"
 description: "A test page."
 keywords: []
-hidden: false
-mode: "unsupported"
-noindex: "no"
+hidden: "no"
+sidebar: "left"
 ---
 
 ## Start
@@ -264,13 +214,15 @@ noindex: "no"
       "frontmatter",
       "frontmatter",
       "frontmatter",
-      "frontmatter",
     ]);
     expect(violations.map((violation) => violation.msg).join("\n")).toContain(
       "missing or invalid `keywords` array"
     );
     expect(violations.map((violation) => violation.msg).join("\n")).toContain(
-      "`hidden` must be true when present"
+      "`hidden` must be a boolean when present"
+    );
+    expect(violations.map((violation) => violation.msg).join("\n")).toContain(
+      "`sidebar` must be a mapping when present"
     );
   });
 
@@ -383,12 +335,36 @@ noindex: "no"
     const violations = await lintOne(
       "docs/page.mdx",
       page(`
-<Note>First note.</Note>
-<Tip>Second tip.</Tip>
+:::note
+First note.
+:::
+
+:::tip[Titled]
+Second tip.
+:::
 `)
     );
 
     expect(violations.map((violation) => violation.rule)).toEqual(["callout-spacing"]);
+  });
+
+  it("accepts callouts separated by explanatory content", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+:::note
+First note.
+:::
+
+Prose that explains why the second callout follows.
+
+:::tip
+Second tip.
+:::
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).not.toContain("callout-spacing");
   });
 
   it("requires sentence-case body headings while allowing commands, acronyms, and code", async () => {
@@ -415,52 +391,12 @@ noindex: "no"
     expect(allowed).toEqual([]);
   });
 
-  it("rejects invalid docs.json config and orphan navigation pages", async () => {
-    const root = await writeDocs({
-      "docs/docs.json": JSON.stringify({
-        $schema: "https://example.com/schema.json",
-        colors: { primary: "blue" },
-        icons: { library: "tabler" },
-        name: "",
-        navigation: {
-          groups: [
-            {
-              group: "This navigation label is too long for a compact sidebar item",
-              pages: ["missing.md"],
-            },
-          ],
-        },
-        theme: "unknown",
-      }),
-      "docs/page.mdx": page("## Start"),
-    });
-
-    const violations = lintDocsStandard({ files: ["docs/page.mdx"], rootDir: root });
-    const rules = violations.map((violation) => violation.rule);
-
-    expect(rules).toContain("docs-json");
-    expect(rules).toContain("navigation");
-    expect(rules).toContain("navigation-label");
-    expect(violations.map((violation) => violation.msg).join("\n")).toContain(
-      "missing from docs.json"
-    );
-  });
-
   it("checks local-runner install wording as part of docs-standard", async () => {
     const root = await writeDocs(localRunnerFixtureFiles());
 
     const violations = lintDocsStandard({ rootDir: root });
 
     expect(violations).toEqual([]);
-  });
-
-  it("requires docs.json from the executable full-lint route", async () => {
-    const root = await writeDocs({ "docs/page.mdx": page("## Start") });
-
-    const result = spawnSync(process.execPath, [docsLintCli], { cwd: root, encoding: "utf8" });
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("[docs-json]");
   });
 
   it("checks local-runner conventions from the executable full-lint route", async () => {

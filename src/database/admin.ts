@@ -1,5 +1,6 @@
 import { Client } from "pg";
 import { extractCatalogModel } from "../catalog/extract.js";
+import type { SupaschemaConfig } from "../config/schema.js";
 import { fingerprintObjects } from "../hash.js";
 import { quoteIdent } from "../sql/identifiers.js";
 import { splitSqlStatements } from "../sql/split.js";
@@ -176,8 +177,16 @@ export async function applyMigrationSql(databaseUrl: string, sql: string): Promi
   }
 }
 
-export async function catalogFingerprint(databaseUrl: string, source = "catalog"): Promise<string> {
-  const model = await extractCatalogModel({ databaseUrl, source });
+export async function catalogFingerprint(
+  databaseUrl: string,
+  source = "catalog",
+  config?: Partial<SupaschemaConfig>
+): Promise<string> {
+  const model = await extractCatalogModel({
+    ...(config === undefined ? {} : { config }),
+    databaseUrl,
+    source,
+  });
   const errors = model.diagnostics.filter((item) => item.severity === "error");
   if (errors.length > 0) {
     throw new Error(errors.map((item) => item.message).join("; "));

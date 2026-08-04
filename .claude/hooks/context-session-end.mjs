@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-import { runAgentHookEvent } from "../../scripts/agent-hooks/runner.mjs";
+import { runSessionLifecycleEvent } from "../../scripts/agent-hooks/session-lifecycle.mjs";
 
-runAgentHookEvent("SessionEnd");
+runSessionLifecycleEvent("SessionEnd");

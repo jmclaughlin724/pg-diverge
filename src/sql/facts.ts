@@ -360,12 +360,15 @@ function grantHash(object: SchemaObject): string {
   return shapeHash(
     {
       columnPrivileges: object.metadata.columnPrivileges ?? null,
+      grantOptionColumnPrivileges: object.metadata.grantOptionColumnPrivileges ?? null,
+      grantOptionPrivileges: Array.isArray(object.metadata.grantOptionPrivileges)
+        ? object.metadata.grantOptionPrivileges
+        : [],
       grantee: String(object.metadata.grantee ?? ""),
       kindPhrase: String(object.metadata.kindPhrase ?? ""),
       privileges: Array.isArray(object.metadata.privileges) ? object.metadata.privileges : [],
       targetIdentity: String(object.metadata.targetIdentity ?? ""),
       verb: String(object.metadata.verb ?? ""),
-      withGrantOption: object.metadata.withGrantOption === true,
     },
     object.key,
     object.ref
@@ -376,6 +379,9 @@ function defaultPrivilegeHash(object: SchemaObject): string {
   return shapeHash(
     {
       forRole: String(object.metadata.forRole ?? ""),
+      grantOptionPrivileges: Array.isArray(object.metadata.grantOptionPrivileges)
+        ? object.metadata.grantOptionPrivileges
+        : [],
       grantee: String(object.metadata.grantee ?? ""),
       objectType: String(object.metadata.objectType ?? ""),
       privileges: Array.isArray(object.metadata.privileges) ? object.metadata.privileges : [],
@@ -387,23 +393,12 @@ function defaultPrivilegeHash(object: SchemaObject): string {
   );
 }
 
-function rlsHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
-  return astObjectHash(
-    statements.map((item) => {
-      const cloned = structuredClone(item.node);
-      const alterTable = asRecord(cloned.AlterTableStmt);
-      const relation = asRecord(alterTable?.relation);
-      if (alterTable && relation) {
-        return {
-          ...cloned,
-          AlterTableStmt: {
-            ...alterTable,
-            relation: { ...relation, inh: true },
-          },
-        };
-      }
-      return cloned;
-    }),
+function rlsHash(object: SchemaObject, _statements: { node: AstNode; tag: string }[]): string {
+  return shapeHash(
+    {
+      rlsEnabled: object.metadata.rlsEnabled === true,
+      rlsForced: object.metadata.rlsForced === true,
+    },
     object.key,
     object.ref
   );
@@ -420,8 +415,8 @@ function policyHash(object: SchemaObject, statements: { node: AstNode; tag: stri
 function commentHash(object: SchemaObject): string {
   return shapeHash(
     {
+      commentTarget: object.metadata.commentTarget ?? null,
       description: object.metadata.description ?? null,
-      descriptor: String(object.metadata.descriptor ?? ""),
     },
     object.key,
     object.ref

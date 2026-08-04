@@ -1,9 +1,5 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.src.json" },
-    { "path": "./tsconfig.tools.json" }
-  ],
+  "extends": "./tsconfig.tools.json",
   "compilerOptions": {
     "strictNullChecks": true
   }

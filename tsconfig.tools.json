@@ -2,33 +2,33 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": false,
-    "composite": true,
-    "declaration": true,
-    "emitDeclarationOnly": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "outDir": ".tmp/tsc-tools",
+    "noEmit": true,
     "rootDir": ".",
     "strict": true,
-    "target": "ES2023",
-    "tsBuildInfoFile": ".tmp/tsc-tools/tsconfig.tools.tsbuildinfo"
+    "target": "ES2023"
   },
   "exclude": [
     ".git",
-    ".tmp",
     "api-docs",
     "benchmarks/results",
     "coverage",
     "dist",
+    "docs/.blume",
+    "docs/.blume-verify",
+    "docs/dist",
+    "docs/node_modules",
     "node_modules"
   ],
   "include": [
     "benchmarks/**/*.js",
     "benchmarks/**/*.mjs",
     "bin/**/*.mjs",
-    "cloudflare/**/*.js",
+    "docs/**/*.ts",
     "scripts/**/*.js",
     "scripts/**/*.mjs",
+    "services/**/*.ts",
     "src/**/*.ts"
   ]
 }

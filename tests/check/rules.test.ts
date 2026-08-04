@@ -137,7 +137,7 @@ function rlsObject(table: string): SchemaObject {
     dependencies: [],
     hash: "h",
     key: `public.${table}.rls`,
-    metadata: { rlsSubtype: "AT_EnableRowSecurity" },
+    metadata: { rlsEnabled: true, rlsForced: false },
     normalizedSql: "",
     ordinal: 0,
     ref: { kind: "rls", name: table, schema: "public", table },

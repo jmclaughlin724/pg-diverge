@@ -8,6 +8,7 @@ import { resolveConfig } from "../config/schema.js";
 import { expandEnvReference } from "../database/url.js";
 import { diagnostic, isDiagnostic } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
+import { commentTarget, objectSchema } from "../sql/dependents.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
 import { isManagedSchemaOverlay } from "../sql/ownership.js";
 import type {
@@ -63,6 +64,7 @@ async function extractRawModel(
   if (parsed.kind === "database") {
     const databaseUrl = expandEnvReference(parsed.payload);
     return extractCatalogModel({
+      config,
       databaseUrl,
       normalize: config.normalize === "deparse",
       source,
@@ -191,7 +193,7 @@ function pruneFilteredCommentTargets(model: SchemaModel): SchemaModel {
   return withObjects(
     model,
     model.objects.filter((object) => {
-      const targetKey = filteredCommentTargetKey(object);
+      const targetKey = filteredExtensionCommentTargetKey(object);
       return targetKey === undefined || objectKeys.has(targetKey);
     })
   );
@@ -213,10 +215,10 @@ async function filterBootstrapInventoryObjects(
       .map((object) => object.metadata.schema)
       .filter((schema): schema is string => typeof schema === "string")
   );
-  const bootstrapCommentDescriptors = new Set(
+  const bootstrapCommentTargetKeys = new Set(
     bootstrap.objects
-      .map(bootstrapCommentDescriptor)
-      .filter((descriptor): descriptor is string => descriptor !== undefined)
+      .map(bootstrapCommentTargetKey)
+      .filter((key): key is string => key !== undefined)
   );
   return withObjects(
     model,
@@ -227,11 +229,8 @@ async function filterBootstrapInventoryObjects(
       if (object.ref.kind === "schema" && bootstrapExtensionSchemas.has(object.ref.name)) {
         return false;
       }
-      const descriptor =
-        object.ref.kind === "comment" && typeof object.metadata.descriptor === "string"
-          ? object.metadata.descriptor
-          : undefined;
-      return descriptor === undefined || !bootstrapCommentDescriptors.has(descriptor);
+      const targetKey = schemaOrExtensionCommentTargetKey(object);
+      return targetKey === undefined || !bootstrapCommentTargetKeys.has(targetKey);
     })
   );
 }
@@ -254,35 +253,29 @@ async function bootstrapInventoryModel(
   return modelFromSqlFiles(files, "bootstrap:inventory", config);
 }
 
-function bootstrapCommentDescriptor(object: SchemaObject): string | undefined {
+function bootstrapCommentTargetKey(object: SchemaObject): string | undefined {
   const ref = object.ref;
   if (ref.kind === "schema") {
-    return `schema ${ref.name}`;
+    return `schema:${ref.name}`;
   }
   if (ref.kind === "extension") {
-    return `extension ${ref.name}`;
+    return `extension:${ref.name}`;
   }
 }
 
-function filteredCommentTargetKey(object: SchemaObject): string | undefined {
-  if (object.ref.kind !== "comment" || typeof object.metadata.descriptor !== "string") {
+function schemaOrExtensionCommentTargetKey(object: SchemaObject): string | undefined {
+  const target = commentTarget(object);
+  if (object.ref.kind !== "comment" || !target) {
     return;
   }
-  const descriptor = object.metadata.descriptor;
-  const extensionPrefix = "extension ";
-  if (descriptor.startsWith(extensionPrefix)) {
-    return `extension:${descriptor.slice(extensionPrefix.length)}`;
+  if (target.kind === "extension" || target.kind === "schema") {
+    return `${target.kind}:${target.name}`;
   }
 }
 
-export function objectSchema(object: SchemaObject): string {
-  if (object.ref.kind === "schema") {
-    return object.ref.name;
-  }
-  if (object.ref.kind === "extension" && typeof object.metadata.schema === "string") {
-    return object.metadata.schema;
-  }
-  return object.ref.schema ?? "public";
+function filteredExtensionCommentTargetKey(object: SchemaObject): string | undefined {
+  const target = commentTarget(object);
+  return target?.kind === "extension" ? `extension:${target.name}` : undefined;
 }
 
 function diagnosticSchemas(item: Diagnostic): string[] {

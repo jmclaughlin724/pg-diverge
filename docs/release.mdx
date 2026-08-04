@@ -23,6 +23,22 @@ The public install package remains `supaschema` on npmjs.org. The release workfl
 4. Keep the release workflow's `packages: write` permission enabled so `GITHUB_TOKEN` can publish the scoped GitHub Packages mirror.
 5. Keep the `release tag policy` ruleset active for `v*` tags so published release tags cannot be rewritten or deleted.
 
+## Snapshot channel (`next`)
+
+Every protected `main` push also runs `snapshot.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag with the same OIDC provenance and attestation as a stable release. The `latest` tag, GitHub Releases, `v*` tags, and the GitHub Packages mirror remain `release.yml`-only.
+
+Snapshots exist so downstream projects can dogfood the current main build as an exact version pin instead of a symlink or tarball. Always consume them as exact versions (for example `supaschema@0.5.6-dev.abc1234` or resolving `npm view supaschema@next version` first); do not pin the `next` tag itself in a lockfile-managed manifest, because it moves on every main push.
+
+One-time setup beyond the stable lane: add a second npm trusted publisher entry identical to the `release.yml` entry but with workflow filename `snapshot.yml`. Without it, the snapshot publish fails OIDC validation.
+
+A republished SHA is skipped: the workflow probes `npm view` for the exact snapshot version and exits cleanly when it already exists.
+
+## Consumer canary
+
+`consumer-canary.yml` is a `workflow_dispatch`-only lane that dogfoods any supaschema build against a real consumer repository. Given a consumer repo and ref, it clones the consumer, installs a chosen spec — an exact snapshot version such as `0.5.6-dev.abc1234`, a dist-tag resolved to an exact version first (`next`, the default), or a local tarball path — and runs the consumer's supaschema gates (`config validate`, `types --check`, `check`) through the consumer's own package manager. It publishes nothing and never gates releases.
+
+Prerequisite: create a `CONSUMER_CANARY_TOKEN` Actions secret holding a fine-grained PAT with `contents: read` on each private consumer repository. Public consumers need no token.
+
 ## Per-release checklist
 
 1. Add changesets for user-facing changes while the change is fresh.

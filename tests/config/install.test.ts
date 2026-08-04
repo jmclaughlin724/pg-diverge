@@ -542,13 +542,13 @@ describe("init project setup", () => {
       (entry: { hooks?: { command?: string; timeout?: number }[] }) =>
         Array.isArray(entry.hooks)
           ? entry.hooks.filter((hook) =>
-              hook.command?.includes("supaschema hook generated-migration-edit")
+              hook.command?.includes("supaschema hook generated-artifact-edit")
             )
           : []
     );
     expect(generatedMigrationEntries).toHaveLength(1);
     expect(generatedMigrationEntries[0]).toMatchObject({
-      command: "npm exec -- supaschema hook generated-migration-edit --runtime codex",
+      command: "npm exec -- supaschema hook generated-artifact-edit --runtime codex",
       timeout: 10,
     });
   });
@@ -571,7 +571,7 @@ describe("init project setup", () => {
                     type: "command",
                   },
                 ],
-                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+                matcher: "Write|Edit|MultiEdit|apply_patch",
               },
             ],
           },
@@ -635,7 +635,7 @@ describe("init project setup", () => {
     );
     expect(commands).toContain("node .codex/hooks/tool-gate.mjs");
     expect(commands).toContain(
-      "npm exec -- supaschema hook generated-migration-edit --runtime codex"
+      "npm exec -- supaschema hook generated-artifact-edit --runtime codex"
     );
     expect(commands).not.toContain(retiredCodexGeneralGuardCommand);
     expect(existsSync(join(consumer, ".codex/hooks/general-guard.mjs"))).toBe(false);
@@ -683,7 +683,7 @@ describe("init project setup", () => {
                   },
                   { command: "node .claude/hooks/custom.mjs", type: "command" },
                 ],
-                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+                matcher: "Write|Edit|MultiEdit|apply_patch",
               },
             ],
           },
@@ -781,7 +781,7 @@ describe("init project setup", () => {
                     type: "command",
                   },
                 ],
-                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+                matcher: "Write|Edit|MultiEdit|apply_patch",
               },
             ],
           },
@@ -850,9 +850,7 @@ describe("init project setup", () => {
       await readFile(join(process.cwd(), "agent-bundle/codex/hooks.npm.json"), "utf8")
     );
     const packagedGeneratedEntry = packagedCodexHooks.hooks.PreToolUse.find((entry: HookEntry) =>
-      entry.hooks?.some((hook) =>
-        hook.command?.includes("supaschema hook generated-migration-edit")
-      )
+      entry.hooks?.some((hook) => hook.command?.includes("supaschema hook generated-artifact-edit"))
     );
 
     expect(customEntries).toHaveLength(1);

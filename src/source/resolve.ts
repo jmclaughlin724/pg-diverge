@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { SupaschemaConfig } from "../config/schema.js";
+import { resolveConfig, type SupaschemaConfig } from "../config/schema.js";
+import { MODEL_FORMAT_VERSION, stableJson } from "../hash.js";
 import type { CurrentBaselineFingerprints } from "../migrations/status.js";
 import { redactSecrets } from "../redaction.js";
+import type { ExtractOptions, SchemaModel } from "../types.js";
 import { extractSourceModel } from "./extract.js";
 
 const execFileAsync = promisify(execFile);
@@ -62,7 +64,7 @@ export async function currentBaselineFingerprints(
   config: SupaschemaConfig,
   cwd: string = process.cwd()
 ): Promise<CurrentBaselineFingerprints> {
-  const head = (await defaultGitHeadExists())
+  const head = (await defaultGitHeadExists(cwd))
     ? await sourceFingerprint("git:HEAD", config, cwd)
     : undefined;
   const tree = await sourceFingerprint(defaultTreeSource(config), config, cwd);
@@ -72,21 +74,85 @@ export async function currentBaselineFingerprints(
   };
 }
 
-async function sourceFingerprint(
+export async function sourceFingerprint(
   source: string,
   config: SupaschemaConfig,
   cwd: string
 ): Promise<string | undefined> {
   try {
-    return (await extractSourceModel(source, { config, cwd })).fingerprint;
+    return (await extractGenerationSourceModel(source, { config, cwd })).fingerprint;
   } catch {
-    // Invalid fallback sources are ignored while resolving alternatives.
+    const unreadableFallbackSourcesAreIgnoredWhileResolvingAlternatives = undefined;
+    return unreadableFallbackSourcesAreIgnoredWhileResolvingAlternatives;
   }
 }
 
-export async function defaultGitHeadExists(): Promise<boolean> {
+const generationSourceModels = new Map<string, Promise<SchemaModel>>();
+
+export async function extractGenerationSourceModel(
+  source: string,
+  options: ExtractOptions
+): Promise<SchemaModel> {
+  const cwd = options.cwd ?? process.cwd();
+  const key = await commitScopedModelKey(source, cwd, options);
+  if (key === undefined) {
+    return extractSourceModel(source, options);
+  }
+  const memoized = generationSourceModels.get(key);
+  if (memoized !== undefined) {
+    return memoized;
+  }
+  const pending = extractSourceModel(source, options);
+  generationSourceModels.set(key, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    generationSourceModels.delete(key);
+    throw error;
+  }
+}
+
+async function commitScopedModelKey(
+  source: string,
+  cwd: string,
+  options: ExtractOptions
+): Promise<string | undefined> {
+  if (!source.startsWith("git:")) {
+    return;
+  }
+  const revision = await resolvedGitObject(source.slice("git:".length), cwd);
+  if (revision === undefined) {
+    return;
+  }
+  return stableJson([
+    source,
+    revision,
+    cwd,
+    MODEL_FORMAT_VERSION,
+    stableJson(resolveConfig(options.config)),
+    [...(options.excludeMigrationFiles ?? [])].sort(),
+  ]);
+}
+
+async function resolvedGitObject(revision: string, cwd: string): Promise<string | undefined> {
+  if (revision === "INDEX") {
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, "rev-parse", `${revision}^{tree}`], {
+      maxBuffer: 1024 * 1024,
+    });
+    return stdout.trim();
+  } catch {
+    const unresolvableRevisionsAreExtractedWithoutMemoization = undefined;
+    return unresolvableRevisionsAreExtractedWithoutMemoization;
+  }
+}
+
+export async function defaultGitHeadExists(cwd: string = process.cwd()): Promise<boolean> {
   try {
     await execFileAsync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
+      cwd,
       maxBuffer: 1024 * 1024,
     });
     return true;

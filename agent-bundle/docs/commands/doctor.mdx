@@ -25,17 +25,15 @@ npx supaschema doctor --json
 
 ## Flags
 
-<ParamField path="--database-url" type="url">
-  Database URL to probe. Defaults to normal database URL resolution.
-</ParamField>
-
-<ParamField path="--json" type="boolean">
-  Print the doctor report as JSON.
-</ParamField>
+| Name             | Type    | Description                                                        |
+| ---------------- | ------- | ------------------------------------------------------------------ |
+| `--database-url` | url     | Database URL to probe. Defaults to normal database URL resolution. |
+| `--json`         | boolean | Print the doctor report as JSON.                                   |
 
 ## What it checks
 
 - Node.js version and parser loading;
+- build identity: package version, commit, build time, and tree state;
 - config presence and validation;
 - pending install path confirmation;
 - database URL resolution;

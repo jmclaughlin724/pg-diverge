@@ -33,7 +33,7 @@ The configured `migrationsDir` is always a planning input for source intent and 
 
   </Card>
 
-  <Card title="Git snapshot" icon="code-branch">
+  <Card title="Git snapshot" icon="git-branch">
     **Syntax:** `git:INDEX`, `git:HEAD`, `git:origin/main`, `git:abc1234`
 
     Schema in the staged index or at any committed Git ref. supaschema reads the `schemaPaths` files without touching your working tree.
@@ -49,7 +49,7 @@ The configured `migrationsDir` is always a planning input for source intent and 
 </CardGroup>
 
 <CardGroup cols={3}>
-  <Card title="SQL dump" icon="file-arrow-down">
+  <Card title="SQL dump" icon="file-down">
     **Syntax:** `dump:path/to/schema.sql`, `dump:-`
 
     A single SQL file, or standard input (`-`). Useful for one-off analysis of `pg_dump` output.
@@ -88,11 +88,9 @@ supaschema diff --from git:HEAD --to dir:database/schemas
 - Local development — your schema files live in the repository alongside your application code.
 - Any command where the desired state is what you have currently checked out.
 
-<Tip>
-  You can specify multiple schema directories using the `schemaPaths` key in
-  `supaschema.config.json` for project-wide defaults so you don't have to type
-  the path on every command.
-</Tip>
+:::tip
+You can specify multiple schema directories using the `schemaPaths` key in `supaschema.config.json` for project-wide defaults so you don't have to type the path on every command.
+:::
 
 ### Directory layout example
 
@@ -137,12 +135,9 @@ supaschema diff --from git:origin/main --to git:feature/add-subscriptions
 - **Release diffs** — quickly see what changed between two tagged versions.
 - **Code review** — produce a human-readable SQL diff alongside the file diff in your PR.
 
-<Note>
-  supaschema resolves `git:` refs against the repository that contains your
-  `schemaPaths`. The working directory must be inside a Git repository, and the
-  ref must be reachable (fetched). For remote refs like `git:origin/main`, run
-  `git fetch` first in your CI step.
-</Note>
+:::note
+supaschema resolves `git:` refs against the repository that contains your `schemaPaths`. The working directory must be inside a Git repository, and the ref must be reachable (fetched). For remote refs like `git:origin/main`, run `git fetch` first in your CI step.
+:::
 
 ### CI pipeline example
 
@@ -183,12 +178,9 @@ supaschema diff \
 - **Drift detection** — check whether someone has made out-of-band changes directly on the server.
 - **Generating a migration from scratch** — when you have no prior snapshot, the live database is the most authoritative "from" state.
 
-<Warning>
-  The `DATABASE_URL` you pass is used for introspection only. supaschema does
-  not cache credentials or send them anywhere. However, treat this URL as a
-  secret — pass it via environment variable rather than hard-coding it in
-  scripts that end up in version control.
-</Warning>
+:::warning
+The `DATABASE_URL` you pass is used for introspection only. supaschema does not cache credentials or send them anywhere. However, treat this URL as a secret — pass it via environment variable rather than hard-coding it in scripts that end up in version control.
+:::
 
 ### Connection string formats
 
@@ -227,12 +219,9 @@ pg_dump --schema-only $PROD_URL | supaschema diff --from dump:- --to dir:databas
 - **Audit trails** — archive periodic `pg_dump` snapshots and compare them over time.
 - **Offline workflows** — you have a dump but no live connection to the source database.
 
-<Note>
-  `dump:` sources are parsed through the same fail-closed extraction path as
-  schema-tree SQL. Use a cleaned schema-only dump that omits `SET` statements,
-  ownership comments, and other `pg_dump` preamble statements, or filter the
-  dump before passing it to supaschema.
-</Note>
+:::note
+`dump:` sources are parsed through the same fail-closed extraction path as schema-tree SQL. Use a cleaned schema-only dump that omits `SET` statements, ownership comments, and other `pg_dump` preamble statements, or filter the dump before passing it to supaschema.
+:::
 
 ---
 
@@ -250,7 +239,7 @@ supaschema diff \
 
 supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The replay model is valid for `types --from` and as the `diff`/`plan`/`sync` before-state when it resolves to the configured `migrationsDir`. It is not a generation target, `verify` target, or drift target. A different migration directory fails with `SUPA_MIGRATION_BASELINE_UNSUPPORTED`; using replay as `--to` fails with `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED`.
 
-Replaying the configured `migrationsDir` rebuilds the before-state from the whole corpus, so it is its own baseline proof. It stays valid whether or not generated lineage is present, and whether or not hand-authored migrations follow the newest generated migration. The lineage checks that produce `SUPA_MIGRATION_BASELINE_UNSUPPORTED` and `SUPA_MIGRATION_BASELINE_MISMATCH` apply to snapshot sources such as `git:`, `dir:`, `dump:`, and `catalog:`, which must match a recorded generated baseline.
+Replaying the configured `migrationsDir` rebuilds the before-state from the whole corpus, so it is its own baseline proof. It stays valid whether or not generated lineage is present, and whether or not hand-authored migrations follow the newest generated migration. For generation, `sources.from: "auto"` chooses this replay lane for first-lineage adoption or a hand-authored tail, and chooses `git:HEAD` only when lineage is contiguous. A replay failure emits its file-specific diagnostic plus `SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED`; repair the historical source/model owner rather than editing generated contracts or selecting an unrelated snapshot. `SUPA_MIGRATION_BASELINE_UNSUPPORTED` remains the wrong-directory boundary, while `SUPA_MIGRATION_BASELINE_MISMATCH` applies to snapshot sources such as `git:`, `dir:`, `dump:`, and `catalog:`, which must match a recorded generated baseline.
 
 Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored targets for supported `ALTER` statements, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
 
@@ -306,32 +295,20 @@ supaschema diff \
 
 The table below summarises the most useful source pairings and the workflow each one powers.
 
-| Scenario | `--from` | `--to` | Purpose |
-| --- | --- | --- | --- |
-| Local development | `database:$LOCAL_URL` | `dir:database/schemas` | Generate a migration from your local DB to edited schema files |
-| PR safety check (CI) | `git:origin/main` | `dir:database/schemas` | Diff the branch against the base without a database |
-| Deploy to production | `database:$PROD_URL` | `dir:database/schemas` | Generate a migration targeting the live production database |
-| Drift detection | `database:$PROD_URL` | `catalog:snapshots/last-deploy.json` | Detect out-of-band changes on the server |
-| First migration | `empty:` | `dir:database/schemas` | Generate the initial migration without a database or Git baseline |
-| Reconciling existing DB | `database:$DATABASE_URL` | `dir:database/schemas` | Generate a migration from the deployed catalog to your files |
-| Cross-branch comparison | `git:origin/main` | `git:feature/my-branch` | Preview the migration a merge would produce |
-| Analyse a legacy dump | `dump:legacy-schema.sql` | `dir:database/schemas` | Diff a dump file against your current schema |
-| Adopt a migration-first project | `migrations:supabase/migrations` | `dir:supabase/schemas` | Generate the first lineage migration from the configured history |
-| Generate types from history | `migrations:supabase/migrations` | n/a | Run `supaschema types --from migrations:supabase/migrations` without a database |
+| Scenario                        | `--from`                         | `--to`                               | Purpose                                                                         |
+| ------------------------------- | -------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| Local development               | `database:$LOCAL_URL`            | `dir:database/schemas`               | Generate a migration from your local DB to edited schema files                  |
+| PR safety check (CI)            | `git:origin/main`                | `dir:database/schemas`               | Diff the branch against the base without a database                             |
+| Deploy to production            | `database:$PROD_URL`             | `dir:database/schemas`               | Generate a migration targeting the live production database                     |
+| Drift detection                 | `database:$PROD_URL`             | `catalog:snapshots/last-deploy.json` | Detect out-of-band changes on the server                                        |
+| First migration                 | `empty:`                         | `dir:database/schemas`               | Generate the initial migration without a database or Git baseline               |
+| Reconciling existing DB         | `database:$DATABASE_URL`         | `dir:database/schemas`               | Generate a migration from the deployed catalog to your files                    |
+| Cross-branch comparison         | `git:origin/main`                | `git:feature/my-branch`              | Preview the migration a merge would produce                                     |
+| Analyse a legacy dump           | `dump:legacy-schema.sql`         | `dir:database/schemas`               | Diff a dump file against your current schema                                    |
+| Adopt a migration-first project | `migrations:supabase/migrations` | `dir:supabase/schemas`               | Generate the first lineage migration from the configured history                |
+| Generate types from history     | `migrations:supabase/migrations` | n/a                                  | Run `supaschema types --from migrations:supabase/migrations` without a database |
 
-<Tip>
-  Defaults come from `supaschema.config.json`. `sources.from` owns the source
-  before-state, `schemaPaths` owns the desired after-state, and `migrationsDir`
-  owns migration-derived source intent plus generated-lineage baseline proof for
-  zero-source-flag commands. For generation, the scaffolded `"auto"`
-  before-state first resolves `git:INDEX` when the latest generated migration is
-  staged without worktree edits and its lineage matches the indexed schema
-  fingerprint. It then tries valid `git:HEAD` and blocks if generated migrations
-  prove a different baseline. `empty:` is only
-  for a first migration with no existing migration corpus. A `migrations:`
-  before-state must resolve to `migrationsDir` and replay without errors; keep
-  generation targets and verify/drift sources on `dir:`, `git:`, `dump:`,
-  `catalog:`, `database:`, or `empty:`.
+:::tip Defaults come from `supaschema.config.json`. `sources.from` owns the source before-state, `schemaPaths` owns the desired after-state, and `migrationsDir` owns migration-derived source intent plus generated-lineage baseline proof for zero-source-flag commands. For generation, the scaffolded `"auto"` before-state first resolves `git:INDEX` when the latest generated migration is staged without worktree edits and its lineage matches the indexed schema fingerprint. It then tries valid `git:HEAD` and blocks if generated migrations prove a different baseline. `empty:` is only for a first migration with no existing migration corpus. A `migrations:` before-state must resolve to `migrationsDir` and replay without errors; keep generation targets and verify/drift sources on `dir:`, `git:`, `dump:`, `catalog:`, `database:`, or `empty:`.
 
 ```json
 {
@@ -342,4 +319,4 @@ The table below summarises the most useful source pairings and the workflow each
 }
 ```
 
-</Tip>
+:::

@@ -112,7 +112,7 @@ function collapseSqlFragment(value: string): string {
   const parts: string[] = [];
   let current = "";
   for (const char of value) {
-    if (char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f") {
+    if (isSqlWhitespace(char)) {
       if (current.length > 0) {
         parts.push(current);
         current = "";
@@ -125,6 +125,17 @@ function collapseSqlFragment(value: string): string {
     parts.push(current);
   }
   return parts.join(" ");
+}
+
+function isSqlWhitespace(char: string): boolean {
+  return (
+    char === " " ||
+    char === "\t" ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\f" ||
+    char === "\v"
+  );
 }
 
 export function expressionSql(expression: unknown): string | undefined {
@@ -246,8 +257,14 @@ function columnDefaultExpression(
     if (expressionStart === undefined) {
       return;
     }
+    const expressionOffset = expressionStart - byteOffset;
+    const parenthesized = findSqlParenRange(sql, item.location);
+    const start =
+      parenthesized && parenthesized.open < expressionOffset
+        ? parenthesized.open
+        : expressionOffset;
     const end = located[index + 1]?.location ?? element.end;
-    let text = sql.slice(expressionStart - byteOffset, end).trim();
+    let text = sql.slice(start, end).trim();
     if (text.endsWith(",")) {
       text = text.slice(0, -1).trimEnd();
     }

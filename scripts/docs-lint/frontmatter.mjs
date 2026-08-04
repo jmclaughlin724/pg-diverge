@@ -1,7 +1,5 @@
 const { parse: parseYaml } = await import("yaml");
 
-const FRONTMATTER_MODES = new Set(["default", "wide", "custom", "frame", "center"]);
-
 const lineOf = (node) => node.position?.start?.line ?? 1;
 
 const pushFrontmatterViolation = (violations, file, msg) => {
@@ -53,28 +51,23 @@ const validateRequiredFrontmatterFields = (data, file, violations) => {
 };
 
 const validateFrontmatterFieldTypes = (data, file, violations) => {
-  for (const field of ["sidebarTitle", "icon", "iconType", "tag", "api", "openapi", "url"]) {
+  for (const field of ["slug", "type", "date", "lastModified"]) {
     if (data[field] !== undefined && typeof data[field] !== "string") {
       pushFrontmatterViolation(violations, file, `\`${field}\` must be a string when present`);
     }
   }
-  for (const field of ["noindex", "timestamp"]) {
+  for (const field of ["draft", "hidden"]) {
     if (data[field] !== undefined && typeof data[field] !== "boolean") {
       pushFrontmatterViolation(violations, file, `\`${field}\` must be a boolean when present`);
     }
   }
-  if (data.hidden !== undefined && data.hidden !== true) {
-    pushFrontmatterViolation(
-      violations,
-      file,
-      "`hidden` must be true when present; omit it instead of setting false"
-    );
-  }
-  if (data.mode !== undefined && !FRONTMATTER_MODES.has(data.mode)) {
-    pushFrontmatterViolation(
-      violations,
-      file,
-      "`mode` must be one of default, wide, custom, frame, or center"
-    );
+  for (const field of ["sidebar", "seo", "search"]) {
+    const value = data[field];
+    if (
+      value !== undefined &&
+      (typeof value !== "object" || value === null || Array.isArray(value))
+    ) {
+      pushFrontmatterViolation(violations, file, `\`${field}\` must be a mapping when present`);
+    }
   }
 };

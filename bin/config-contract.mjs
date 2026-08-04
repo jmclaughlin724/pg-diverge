@@ -469,7 +469,7 @@ const contract = JSON.parse(`{
       "default": {
         "from": "auto"
       },
-      "description": "Default before source for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist.",
+      "description": "Default before source for zero-source-flag diff, plan, and verify. For generation, sources.from:auto uses a proven staged closure, replays the configured migration corpus for adoption or a manual tail, and uses git:HEAD only for contiguous lineage.",
       "examples": [
         {
           "from": "auto"

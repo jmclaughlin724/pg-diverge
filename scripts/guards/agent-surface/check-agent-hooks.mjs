@@ -1,89 +1,96 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseToml } from "smol-toml";
 import { assert, ok } from "../lib/assertions.js";
 import { exists, ROOT, readJson, readText } from "../lib/repository.js";
 import {
   claudePreToolUseCommandsFor,
   codexPreToolUseCommandsFor,
   hookHandlers,
+  importsNamedBinding,
   runnerDeclaresFunction,
   runnerImportsEvaluateBashPolicy,
-  runnerImportsRepositoryBoundary,
+  sessionLifecycleEntrypoints,
+  sessionLifecycleEntrypointsFor,
 } from "./hook-topology.mjs";
 
 const claudeHookFiles = [
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/hooks/supaschema-source-hook.mjs",
   ".claude/hooks/guards/bash-policy-checks.mjs",
 ];
-const sourceRepoClaudeRegisteredHookPaths = [
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".claude/hooks/supaschema-source-hook.mjs",
-];
+const sourceRepoClaudeRegisteredHookPaths = [".claude/hooks/supaschema-source-hook.mjs"];
+const claudeLifecycleEntrypoints = sessionLifecycleEntrypointsFor(".claude");
+const codexLifecycleEntrypoints = sessionLifecycleEntrypointsFor(".codex");
 const sourceRepoClaudeContextHooks = [
-  ".claude/hooks/context-session-start.mjs",
+  ...claudeLifecycleEntrypoints,
   ".claude/hooks/context-user-prompt-submit.mjs",
   ".claude/hooks/context-pre-tool-use.mjs",
   ".claude/hooks/context-post-tool-use.mjs",
   ".claude/hooks/context-post-tool-use-failure.mjs",
   ".claude/hooks/context-subagent-start.mjs",
+  ".claude/hooks/context-task-completed.mjs",
   ".claude/hooks/context-subagent-stop.mjs",
   ".claude/hooks/context-stop.mjs",
-  ".claude/hooks/context-task-completed.mjs",
-  ".claude/hooks/context-worktree-create.mjs",
-  ".claude/hooks/context-session-end.mjs",
 ];
 const codexMirrorHookPaths = [
-  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks/supaschema-source-hook.mjs",
   ".codex/hooks/guards/bash-policy-checks.mjs",
 ];
 const sourceRepoCodexContextHooks = [
-  ".codex/hooks/context-session-start.mjs",
+  ...codexLifecycleEntrypoints,
   ".codex/hooks/context-user-prompt-submit.mjs",
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
   ".codex/hooks/context-post-tool-use-failure.mjs",
   ".codex/hooks/context-subagent-start.mjs",
+  ".codex/hooks/context-task-completed.mjs",
   ".codex/hooks/context-subagent-stop.mjs",
   ".codex/hooks/context-stop.mjs",
-  ".codex/hooks/context-task-completed.mjs",
-  ".codex/hooks/context-worktree-create.mjs",
-  ".codex/hooks/context-session-end.mjs",
 ];
 const codexRegisteredHookPaths = [
-  ".codex/hooks/context-session-start.mjs",
+  ...codexLifecycleEntrypoints,
   ".codex/hooks/context-user-prompt-submit.mjs",
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
   ".codex/hooks/context-subagent-start.mjs",
   ".codex/hooks/context-subagent-stop.mjs",
   ".codex/hooks/context-stop.mjs",
-  ".codex/hooks/context-session-end.mjs",
-  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
 ];
 const removedHookPaths = [
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
   ".claude/hooks/context-permission-denied.mjs",
+  ".claude/hooks/context-worktree-create.mjs",
+  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
   ".codex/hooks/context-permission-denied.mjs",
+  ".codex/hooks/context-worktree-create.mjs",
+  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks/general-guard.mjs",
   "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
   "agent-bundle/codex/hooks/general-guard.mjs",
   "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
+  "scripts/agent-hooks/evidence-gate.mjs",
+  "scripts/agent-hooks/merged-branch-state.mjs",
+  "scripts/agent-hooks/repository-boundary.mjs",
+  "scripts/agent-hooks/response-shape.mjs",
 ];
 const sourceRepoHookRuntimeOwners = [
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/hooks/supaschema-source-hook.mjs",
-  "scripts/agent-hooks/repository-boundary.mjs",
+  "scripts/agent-hooks/hook-entrypoint.mjs",
   "scripts/agent-hooks/runner.mjs",
+  "scripts/agent-hooks/session-lifecycle.mjs",
 ];
 const consumerClaudeSettingsFiles = ["npm", "pnpm", "yarn", "bun"].map(
   (packageManager) => `agent-bundle/claude/settings.${packageManager}.json`
 );
+const contextPreToolMatcher =
+  "Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch";
+const claudeEditToolMatcher = "Write|Edit|MultiEdit|apply_patch";
+const codexEditToolMatcher = "apply_patch";
+const contextPostToolMatcher = "Bash|Read|Skill";
 
 function assertLabeledCommandHandlers(value, owner) {
   const invalid = hookHandlers(value).filter(
@@ -119,7 +126,7 @@ function assertClaudeSettings(claudeSettings, root) {
   }
   assert(
     settingsText.includes("/.claude/hooks/supaschema-source-hook.mjs") &&
-      settingsText.includes('"generated-migration-edit"') &&
+      settingsText.includes('"generated-artifact-edit"') &&
       settingsText.includes('"schema-write"'),
     ".claude/settings.json must register the tracked source-repo supaschema hook launcher"
   );
@@ -157,11 +164,11 @@ function assertClaudeSettings(claudeSettings, root) {
   const sourceClaudeSchemaCommands = sourceClaudeBashCommands.filter(
     (command) =>
       command.includes(".claude/hooks/supaschema-source-hook.mjs") &&
-      command.includes("generated-migration-edit")
+      command.includes("generated-artifact-edit")
   );
   assert(
     sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 0,
-    ".claude/settings.json Bash PreToolUse must resolve through the context hook only"
+    ".claude/settings.json Bash PreToolUse must resolve only through the context hook"
   );
   const claudeContextPreToolUse = (claudeSettings.hooks?.PreToolUse ?? []).filter((entry) =>
     hookHandlers(entry).some((handler) =>
@@ -169,8 +176,9 @@ function assertClaudeSettings(claudeSettings, root) {
     )
   );
   assert(
-    claudeContextPreToolUse.length === 1 && claudeContextPreToolUse[0]?.matcher === ".*",
-    ".claude/settings.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
+    claudeContextPreToolUse.length === 1 &&
+      claudeContextPreToolUse[0]?.matcher === contextPreToolMatcher,
+    `.claude/settings.json context PreToolUse must use ${contextPreToolMatcher}`
   );
   const sourceClaudeApplyPatchSchemaCommands = claudePreToolUseCommandsFor(
     claudeSettings,
@@ -178,11 +186,20 @@ function assertClaudeSettings(claudeSettings, root) {
   ).filter(
     (command) =>
       command.includes(".claude/hooks/supaschema-source-hook.mjs") &&
-      command.includes("generated-migration-edit")
+      command.includes("generated-artifact-edit")
   );
   assert(
     sourceClaudeApplyPatchSchemaCommands.length === 1,
-    ".claude/settings.json apply_patch PreToolUse must register the generated-migration policy hook"
+    ".claude/settings.json apply_patch PreToolUse must register the generated-artifact policy hook"
+  );
+  const claudeProductPreToolUse = (claudeSettings.hooks?.PreToolUse ?? []).find((entry) =>
+    hookHandlers(entry).some((handler) =>
+      handler.args?.some((arg) => arg === "generated-artifact-edit")
+    )
+  );
+  assert(
+    claudeProductPreToolUse?.matcher === claudeEditToolMatcher,
+    `.claude/settings.json generated-artifact PreToolUse must use ${claudeEditToolMatcher}`
   );
   assert(
     !sourceClaudeBashCommands.some((command) =>
@@ -216,38 +233,33 @@ function assertClaudeSettings(claudeSettings, root) {
       handler.args?.some((arg) => arg.endsWith("/.claude/hooks/context-post-tool-use.mjs"))
     )
   );
-  const claudeContextMatcher = claudeContextPostToolUse?.matcher;
   assert(
-    typeof claudeContextMatcher === "string" &&
-      claudeContextMatcher.split("|").includes("mcp__supaschema__code_atlas_query") &&
-      !claudeContextMatcher.split("|").includes("mcp__codeatlas__.*"),
-    ".claude/settings.json must dispatch only local Code Atlas MCP results to the context PostToolUse hook"
+    claudeContextPostToolUse?.matcher === contextPostToolMatcher,
+    `.claude/settings.json context PostToolUse must use ${contextPostToolMatcher}`
   );
-  assert(
-    hookHandlers(claudePostToolUse).some((handler) =>
-      handler.args?.some((arg) =>
-        arg.endsWith("/.claude/hooks/sync-llm-on-claude-surface-change.mjs")
+  for (const commandFragment of ["schema-write"]) {
+    const entry = claudePostToolUse.find((candidate) =>
+      hookHandlers(candidate).some((handler) =>
+        [handler.command, ...(handler.args ?? [])].join(" ").includes(commandFragment)
       )
-    ),
-    ".claude/settings.json must run sync:llm from PostToolUse"
-  );
+    );
+    assert(
+      entry?.matcher === claudeEditToolMatcher,
+      `.claude/settings.json ${commandFragment} PostToolUse must use ${claudeEditToolMatcher}`
+    );
+  }
   const claudePostToolUseFailure = claudeSettings.hooks?.PostToolUseFailure ?? [];
   const claudePostToolUseFailureText = JSON.stringify(claudePostToolUseFailure);
   assert(
     claudePostToolUseFailureText.includes("context-post-tool-use-failure.mjs") &&
-      claudePostToolUseFailureText.includes("sync-llm-on-claude-surface-change.mjs"),
-    ".claude/settings.json must record failed tools and sync partial canonical-surface mutations from PostToolUseFailure"
+      claudePostToolUseFailure.length === 1 &&
+      claudePostToolUseFailure[0]?.matcher === "Bash" &&
+      !claudePostToolUseFailureText.includes("sync-llm-on-claude-surface-change.mjs"),
+    ".claude/settings.json must record failed Bash evidence without running surface sync"
   );
   assert(
     claudeSettings.hooks?.PermissionDenied === undefined,
     ".claude/settings.json must not register PermissionDenied without an explicit retry policy"
-  );
-  assert(
-    Array.isArray(claudeSettings.hooks?.WorktreeCreate) &&
-      hookHandlers(claudeSettings.hooks.WorktreeCreate).some((handler) =>
-        handler.args?.some((arg) => arg.endsWith("/.claude/hooks/context-worktree-create.mjs"))
-      ),
-    ".claude/settings.json must block WorktreeCreate through the tracked context hook"
   );
   assert(
     !readText("agent-bundle/claude/settings.npm.json", root).includes(
@@ -262,6 +274,12 @@ function assertClaudeSettings(claudeSettings, root) {
   assert(
     Array.isArray(claudeSettings.hooks?.Stop) && Array.isArray(claudeSettings.hooks?.SubagentStop),
     ".claude/settings.json must register Stop and SubagentStop continuation hooks"
+  );
+  assert(
+    Array.isArray(claudeSettings.hooks?.TaskCompleted) &&
+      settingsText.includes("context-task-completed.mjs") &&
+      claudeSettings.hooks?.WorktreeCreate === undefined,
+    ".claude/settings.json must register TaskCompleted and omit WorktreeCreate"
   );
 }
 
@@ -310,9 +328,7 @@ function assertCodexConfig(codexConfig, root) {
   );
   assert(
     codexConfig.hooks?.PermissionDenied === undefined &&
-      codexConfig.hooks?.PostToolUseFailure === undefined &&
-      codexConfig.hooks?.TaskCompleted === undefined &&
-      codexConfig.hooks?.WorktreeCreate === undefined,
+      codexConfig.hooks?.PostToolUseFailure === undefined,
     ".codex/hooks.json must not register unsupported Codex hook events"
   );
   const codexContextPreToolUse = (codexConfig.hooks?.PreToolUse ?? []).filter((entry) =>
@@ -321,8 +337,9 @@ function assertCodexConfig(codexConfig, root) {
     )
   );
   assert(
-    codexContextPreToolUse.length === 1 && codexContextPreToolUse[0]?.matcher === ".*",
-    ".codex/hooks.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
+    codexContextPreToolUse.length === 1 &&
+      codexContextPreToolUse[0]?.matcher === contextPreToolMatcher,
+    `.codex/hooks.json context PreToolUse must use ${contextPreToolMatcher}`
   );
   for (const [toolName, expectedSchemaCommands] of [
     ["Bash", 0],
@@ -335,11 +352,27 @@ function assertCodexConfig(codexConfig, root) {
     const schemaCommands = commands.filter(
       (command) =>
         command.includes(".codex/hooks/supaschema-source-hook.mjs") &&
-        command.includes("generated-migration-edit")
+        command.includes("generated-artifact-edit")
     );
     assert(
       contextCommands.length === 1 && schemaCommands.length === expectedSchemaCommands,
-      `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-migration hook topology`
+      `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-artifact hook topology`
+    );
+  }
+  const codexProductPreToolUse = (codexConfig.hooks?.PreToolUse ?? []).find((entry) =>
+    hookHandlers(entry).some((handler) => handler.command.includes("generated-artifact-edit"))
+  );
+  assert(
+    codexProductPreToolUse?.matcher === codexEditToolMatcher,
+    `.codex/hooks.json generated-artifact PreToolUse must use ${codexEditToolMatcher}`
+  );
+  for (const commandFragment of ["schema-write"]) {
+    const entry = (codexConfig.hooks?.PostToolUse ?? []).find((candidate) =>
+      hookHandlers(candidate).some((handler) => handler.command.includes(commandFragment))
+    );
+    assert(
+      entry?.matcher === codexEditToolMatcher,
+      `.codex/hooks.json ${commandFragment} PostToolUse must use ${codexEditToolMatcher}`
     );
   }
   const packageCodexConfig = readJson("agent-bundle/codex/hooks.npm.json", root);
@@ -354,7 +387,7 @@ function assertCodexConfig(codexConfig, root) {
       packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") ||
       packageCodexHooksJson.includes("scripts/agent-hooks")
     ) &&
-      packageCodexHooksJson.includes("hook generated-migration-edit") &&
+      packageCodexHooksJson.includes("hook generated-artifact-edit") &&
       packageCodexHooksJson.includes("hook schema-write"),
     "agent-bundle/codex/hooks.npm.json must contain only Supaschema product hooks"
   );
@@ -369,8 +402,15 @@ function assertCodexConfig(codexConfig, root) {
     "agent-bundle Codex handlers must be the two portable Supaschema hook commands"
   );
   assert(
+    packageCodexConfig.hooks?.PreToolUse?.length === 1 &&
+      packageCodexConfig.hooks.PreToolUse[0]?.matcher === codexEditToolMatcher &&
+      packageCodexConfig.hooks?.PostToolUse?.length === 1 &&
+      packageCodexConfig.hooks.PostToolUse[0]?.matcher === codexEditToolMatcher,
+    "agent-bundle Codex product hooks must use apply_patch"
+  );
+  assert(
     codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&
-      codexHooksJson.includes("hook generated-migration-edit") &&
+      codexHooksJson.includes("hook generated-artifact-edit") &&
       codexHooksJson.includes("hook schema-write"),
     ".codex/hooks.json must register the tracked source-repo supaschema hook launcher"
   );
@@ -393,6 +433,20 @@ function assertCodexConfig(codexConfig, root) {
     ),
     ".codex/hooks.json must not register removed supaschema hook scripts"
   );
+  assert(
+    codexConfig.hooks?.TaskCompleted === undefined &&
+      codexConfig.hooks?.WorktreeCreate === undefined,
+    ".codex/hooks.json must omit Claude-only TaskCompleted and removed WorktreeCreate events"
+  );
+  const codexContextPostToolUse = (codexConfig.hooks?.PostToolUse ?? []).find((entry) =>
+    hookHandlers(entry).some((handler) =>
+      handler.command.includes(".codex/hooks/context-post-tool-use.mjs")
+    )
+  );
+  assert(
+    codexContextPostToolUse?.matcher === contextPostToolMatcher,
+    `.codex/hooks.json context PostToolUse must use ${contextPostToolMatcher}`
+  );
 }
 
 function assertConsumerClaudeSettings(root) {
@@ -409,6 +463,15 @@ function assertConsumerClaudeSettings(root) {
         supaschemaHandlers.length === 2 &&
         supaschemaHandlers.every((handler) => handler.args === undefined),
       `${settingsFile} must contain only the two package-manager Supaschema hook commands`
+    );
+    const preToolUse = settings.hooks?.PreToolUse ?? [];
+    const postToolUse = settings.hooks?.PostToolUse ?? [];
+    assert(
+      preToolUse.length === 1 &&
+        preToolUse[0]?.matcher === claudeEditToolMatcher &&
+        postToolUse.length === 1 &&
+        postToolUse[0]?.matcher === claudeEditToolMatcher,
+      `${settingsFile} product hooks must use ${claudeEditToolMatcher}`
     );
     assert(
       !(
@@ -437,25 +500,85 @@ function assertAgentBundleHookLabels(root) {
 export function check(root = ROOT) {
   const sourceRepoAgentRuntimeFiles = [
     ".claude/settings.json",
-    "scripts/agent-hooks/atlas.mjs",
     "scripts/agent-hooks/command-evidence.mjs",
-    "scripts/agent-hooks/evidence-gate.mjs",
+    "scripts/agent-hooks/hook-entrypoint.mjs",
     "scripts/agent-hooks/hook-output.mjs",
-    "scripts/agent-hooks/repository-boundary.mjs",
+    "scripts/agent-hooks/hook-runtime.mjs",
+    "scripts/agent-hooks/postgres-ddl.mjs",
     "scripts/agent-hooks/response-claims.mjs",
     "scripts/agent-hooks/response-evidence.mjs",
-    "scripts/agent-hooks/response-shape.mjs",
     "scripts/agent-hooks/runner.mjs",
+    "scripts/agent-hooks/session-lifecycle.mjs",
+    "scripts/agent-hooks/shell-command.mjs",
     "scripts/agent-hooks/skill-frontmatter.mjs",
-    "scripts/agent-hooks/skill-paths.mjs",
-    "scripts/agent-hooks/skills.mjs",
     "scripts/agent-hooks/state.mjs",
   ];
   assert(
     sourceRepoAgentRuntimeFiles.every((file) => exists(file, root)),
     `source-repo agent hook runtime is incomplete; missing ${sourceRepoAgentRuntimeFiles.filter((file) => !exists(file, root)).join(", ")}`
   );
+  const hookEntrypointText = readText("scripts/agent-hooks/hook-entrypoint.mjs", root);
+  const hookRuntimeText = readText("scripts/agent-hooks/hook-runtime.mjs", root);
   const hookRunnerText = readText("scripts/agent-hooks/runner.mjs", root);
+  const hookStateText = readText("scripts/agent-hooks/state.mjs", root);
+  const sessionLifecycleText = readText("scripts/agent-hooks/session-lifecycle.mjs", root);
+  const sourceHookText = readText(".claude/hooks/supaschema-source-hook.mjs", root);
+  const agentMcpText = readText("services/agent-mcp/supaschema_agent_mcp/server.py", root);
+  const codexRuntimeConfig = parseToml(readText(".codex/config.toml", root));
+  assert(
+    codexRuntimeConfig.features?.hooks === false,
+    ".codex/config.toml must keep native Codex hooks disabled"
+  );
+  assert(
+    hookRuntimeText.includes("process.env.CODEX_THREAD_ID") &&
+      hookRuntimeText.includes('return runtime === "codex"') &&
+      hookEntrypointText.includes("disabledHookResult") &&
+      hookEntrypointText.indexOf("disabledHookResult") <
+        hookEntrypointText.indexOf("readStdinJson"),
+    "the shared hook entrypoint must disable an active Codex runtime before reading hook input"
+  );
+  assert(
+    [hookEntrypointText, sourceHookText].every((source) =>
+      source.includes("hookRuntimeDisabled")
+    ) &&
+      [hookEntrypointText, hookRunnerText, sessionLifecycleText, sourceHookText].every(
+        (source) => !source.includes(".codex/config.toml")
+      ),
+    "every active hook family must delegate Codex hook-disable enforcement to hook-runtime.mjs"
+  );
+  assert(
+    sourceHookText.indexOf("hookRuntimeDisabled") < sourceHookText.indexOf("existsSync(cli)"),
+    "the standalone source hook must disable Codex before filesystem reads or subprocesses"
+  );
+  assert(
+    !(
+      hookStateText.includes(".tmp/agent-hooks") ||
+      hookStateText.includes("defaultStateDir") ||
+      agentMcpText.includes("STATE_DIR")
+    ),
+    "repository hook and MCP owners must not synthesize persistent hook state"
+  );
+  for (const lifecycleEntrypoint of sessionLifecycleEntrypoints) {
+    const entrypointText = readText(lifecycleEntrypoint, root);
+    assert(
+      importsNamedBinding(
+        entrypointText,
+        lifecycleEntrypoint,
+        "../../scripts/agent-hooks/session-lifecycle.mjs",
+        "runSessionLifecycleEvent"
+      ),
+      `${lifecycleEntrypoint} must delegate directly to the session lifecycle owner`
+    );
+    assert(
+      !importsNamedBinding(
+        entrypointText,
+        lifecycleEntrypoint,
+        "../../scripts/agent-hooks/runner.mjs",
+        "runAgentHookEvent"
+      ),
+      `${lifecycleEntrypoint} must not import the non-lifecycle hook runner`
+    );
+  }
 
   for (const hook of [
     ...claudeHookFiles,
@@ -493,8 +616,8 @@ export function check(root = ROOT) {
   }
   const codexPostToolUseText = JSON.stringify(codexConfig.hooks?.PostToolUse ?? []);
   assert(
-    codexPostToolUseText.includes("sync-llm-on-claude-surface-change.mjs"),
-    ".codex/hooks.json must run sync:llm from PostToolUse"
+    !codexPostToolUseText.includes("sync-llm-on-claude-surface-change.mjs"),
+    ".codex/hooks.json must not run agent-surface sync from PostToolUse; sync:llm is an explicit command"
   );
   assert(
     Array.isArray(codexConfig.hooks?.Stop) &&
@@ -506,11 +629,6 @@ export function check(root = ROOT) {
     runnerImportsEvaluateBashPolicy(hookRunnerText) &&
       runnerDeclaresFunction(hookRunnerText, "bashSafety"),
     "scripts/agent-hooks/runner.mjs must own source-repo PreToolUse Bash safety"
-  );
-  assert(
-    runnerImportsRepositoryBoundary(hookRunnerText) &&
-      runnerDeclaresFunction(hookRunnerText, "repositoryBoundary"),
-    "scripts/agent-hooks/runner.mjs must run the repository boundary before other PreToolUse checks"
   );
 }
 

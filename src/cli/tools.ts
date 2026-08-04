@@ -33,7 +33,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .option("--database-url <url>", "database URL to probe (default: normal resolution order)")
     .option("--json", "print the report as JSON")
     .description(
-      "Diagnose the environment: Node version, parser, config, URL resolution, database reachability, CREATEDB capability, migrations history, and the declarative tree."
+      "Diagnose the environment: parser and target compatibility, config discovery, database/catalog readiness, migration replay and baseline selection, history, and the declarative tree."
     )
     .action(async (options: { databaseUrl?: string; json?: boolean }) => {
       const config = await context.loadCliConfig();
@@ -57,10 +57,17 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .command("types")
     .option("--from <source>", "source to type (default: the config schema tree)")
     .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
+    .option("--check", "verify on-disk contracts match regenerated output without writing")
     .description("Generate configured TypeScript and Zod contracts from a schema source.")
-    .action(async (options: { from?: string; out?: string }) => {
+    .action(async (options: { check?: boolean; from?: string; out?: string }) => {
+      if (options.check === true && options.out !== undefined) {
+        process.stderr.write("types: --check cannot be combined with --out\n");
+        process.exitCode = 1;
+        return;
+      }
       const config = await context.loadCliConfig();
       const result = await generateTypeContracts({
+        check: options.check === true,
         config,
         honorWorkflowPolicy: options.from === undefined && options.out === undefined,
         ...(options.from === undefined ? {} : { source: options.from }),
@@ -73,6 +80,13 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       }
       if (result.stdout !== undefined) {
         process.stdout.write(result.stdout);
+        return;
+      }
+      if (options.check === true) {
+        for (const line of result.skipped) {
+          process.stdout.write(`${line}\n`);
+        }
+        process.stdout.write(`types: contracts up to date (${result.checked.length} checked)\n`);
         return;
       }
       process.stdout.write(`${result.written.join("\n")}\n`);

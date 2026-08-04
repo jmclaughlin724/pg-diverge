@@ -1,6 +1,7 @@
 import { addLinkViolation, inspectImageSrc } from "./links.mjs";
 
-const CALLOUT_COMPONENTS = new Set(["Note", "Info", "Tip", "Warning", "Danger", "Check"]);
+const CALLOUT_DIRECTIVES = new Set(["danger", "info", "note", "success", "tip", "warning"]);
+const DIRECTIVE_FENCE = ":::";
 
 const lineOf = (node) => node.position?.start?.line ?? 1;
 
@@ -84,12 +85,9 @@ const collectMdxDescendants = (node, name, matches = []) => {
   return matches;
 };
 
-export function inspectMdxNode(node, displayFile, violations, state) {
+export function inspectMdxNode(node, displayFile, violations) {
   if (!isMdxJsxNode(node)) {
     return;
-  }
-  if (node.name === "ParamField") {
-    state.hasParamField = true;
   }
   if (node.name === "img") {
     inspectImgElement(node, displayFile, violations);
@@ -226,19 +224,32 @@ export function inspectImageFrame(node, ancestors, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      msg: "`<img>` elements in docs must be wrapped in a Mintlify <Frame>",
+      msg: "`<img>` elements in docs must be wrapped in a <Frame>",
       rule: "image-frame",
     });
   }
 }
 
+const opensCalloutDirective = (node) => {
+  if (node.type !== "paragraph") {
+    return false;
+  }
+  const [first] = node.children ?? [];
+  if (first?.type !== "text" || !first.value.startsWith(DIRECTIVE_FENCE)) {
+    return false;
+  }
+  const [openingLine] = first.value.slice(DIRECTIVE_FENCE.length).split("\n");
+  const [directive] = openingLine.split("[");
+  return CALLOUT_DIRECTIVES.has(directive.trim());
+};
+
 export function inspectAdjacentCallouts(node, displayFile, violations) {
-  let previousCallout;
+  let previousCallout = false;
   for (const child of node.children ?? []) {
     if (isWhitespaceText(child)) {
       continue;
     }
-    const currentCallout = isMdxJsxNode(child) && CALLOUT_COMPONENTS.has(child.name);
+    const currentCallout = opensCalloutDirective(child);
     if (currentCallout && previousCallout) {
       violations.push({
         file: displayFile,
@@ -247,6 +258,6 @@ export function inspectAdjacentCallouts(node, displayFile, violations) {
         rule: "callout-spacing",
       });
     }
-    previousCallout = currentCallout ? child : undefined;
+    previousCallout = currentCallout;
   }
 }
