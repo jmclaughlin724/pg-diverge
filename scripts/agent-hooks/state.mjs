@@ -551,15 +551,26 @@ function removeDirectoryIfEmpty(lockPath) {
   }
 }
 
+const concurrentlyHeldFileCodes = new Set(["EACCES", "EBUSY", "EPERM"]);
+const concurrentlyHeldFileRetryLimit = 5;
+
 function unlinkIfPresent(file) {
-  try {
-    fs.unlinkSync(file);
-    return true;
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      throw error;
+  for (let remainingAttempts = concurrentlyHeldFileRetryLimit; ; remainingAttempts -= 1) {
+    try {
+      fs.unlinkSync(file);
+      return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        return false;
+      }
+      if (!concurrentlyHeldFileCodes.has(error?.code)) {
+        throw error;
+      }
+      if (remainingAttempts === 0) {
+        return false;
+      }
+      sleep(lockPollMs);
     }
-    return false;
   }
 }
 
