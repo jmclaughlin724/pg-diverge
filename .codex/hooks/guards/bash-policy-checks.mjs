@@ -8,6 +8,7 @@ import {
   parseShellCommand,
   parseStaticArguments,
   staticWordValue,
+  wordText,
 } from "../../../scripts/agent-hooks/shell-command.mjs";
 
 const postgresClassifier = fileURLToPath(
@@ -237,7 +238,10 @@ function checkRecursiveForcedDeletion(invocations, input, env, options) {
           "BLOCKED: recursive forced deletion has an unresolved variable, glob, or command-substitution target. Use a literal path whose resolved scope can be reviewed."
         );
       }
-      if (dangerousResolvedDeletionTarget(target, input, env, options)) {
+      const dangerous = deletionTargetInterpretations(word, target).some((candidate) =>
+        dangerousResolvedDeletionTarget(candidate, input, env, options)
+      );
+      if (dangerous) {
         return block(
           "BLOCKED: recursive forced deletion resolves to the filesystem root, user home, repository root, or a repository ancestor. Use a narrower literal target."
         );
@@ -245,6 +249,13 @@ function checkRecursiveForcedDeletion(invocations, input, env, options) {
     }
   }
   return allowResult();
+}
+
+function deletionTargetInterpretations(word, escapeProcessedTarget) {
+  const literalSource = wordText(word);
+  return literalSource && literalSource !== escapeProcessedTarget
+    ? [escapeProcessedTarget, literalSource]
+    : [escapeProcessedTarget];
 }
 
 function dangerousResolvedDeletionTarget(target, input, env, options) {
