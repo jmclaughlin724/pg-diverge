@@ -166,7 +166,7 @@ describe("migrations source replay", () => {
     expect(first.formatVersion).toBe(MODEL_FORMAT_VERSION);
     expect(first.objects).toHaveLength(246);
     expect(first.fingerprint).toBe(
-      "13e63abff9a09d43a51c2a503fc8035225ad4960a893925f77dabe6a1b91c5e2"
+      "32f0c5ea6d691d1fb5d99ac5097ff2ecc90b9de3f7325a0522ed51d27fe535c6"
     );
     expect(second.objects.map(({ hash, key }) => ({ hash, key }))).toEqual(
       first.objects.map(({ hash, key }) => ({ hash, key }))

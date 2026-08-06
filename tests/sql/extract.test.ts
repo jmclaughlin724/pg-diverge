@@ -1151,6 +1151,53 @@ AS $function$ SELECT 1 $function$`,
     expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_FORWARD_REFERENCE_ORDER");
   });
 
+  it("allows references to a pre-existing table that is dropped and recreated", async () => {
+    const diagnostics = await checkMigrationSql(`
+      GRANT SELECT ON TABLE app.accounts TO authenticated;
+
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+  });
+
+  it("allows routine references to columns of a table that is dropped and recreated", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.read_secret()
+      RETURNS uuid
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+      END;
+      $$;
+
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+  });
+
+  it("rejects references to a table inside its own drop and recreate gap", async () => {
+    const diagnostics = await checkMigrationSql(`
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE OR REPLACE VIEW app.account_summary AS SELECT id FROM app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_FORWARD_REFERENCE_ORDER");
+  });
+
   it("reports unknown configured validators", async () => {
     const diagnostics = await checkMigrationSql("CREATE SCHEMA IF NOT EXISTS app;", {
       config: { validators: ["internal-parser", "definitely-not-real"] },

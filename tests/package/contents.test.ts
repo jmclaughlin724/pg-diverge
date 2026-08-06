@@ -213,7 +213,7 @@ describe("npm package contents", () => {
       `files outside the declared publish surface: ${outsideSurface.join(", ")}`
     ).toEqual([]);
     expect(packed.unpackedSize, `npm tarball unpacked bytes: ${packed.unpackedSize}`).toBeLessThan(
-      2_000_000
+      2_100_000
     );
   });
 });

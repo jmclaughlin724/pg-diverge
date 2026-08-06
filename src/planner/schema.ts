@@ -56,7 +56,10 @@ export function planSchemaDiff(
   appendReplacedObjectDependents(operations, from, to, config, migrationCorpus);
   appendChangedColumnBlockingDependents(operations, from, to, config, migrationCorpus);
   appendDependencyProofDiagnostics(operations, from, to);
-  const sortedOperations = sortOperations(operations, diagnostics);
+  const sortedOperations = sortOperations(
+    suppressReplacedRelationGrantDrops(operations),
+    diagnostics
+  );
   appendOperationDiagnostics(diagnostics, operations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
     diagnostics.push(emptyPlanDriftDiagnostic(fromMap, toMap, from, to));
@@ -242,6 +245,43 @@ function isRelationStateForDroppedOwner(
     tableIdentity !== undefined &&
     relationIdentities.has(tableIdentity)
   );
+}
+
+const grantOwnerReplaceKinds = new Set<ObjectKind>([
+  "foreign-table",
+  "materialized-view",
+  "table",
+  "view",
+]);
+
+// A destructive relation replace removes every privilege with the old relation
+// and the dependents machinery re-creates them from the target state, so a
+// separately rendered grant drop is redundant. Worse, a grant drop that
+// reverse-renders as a GRANT is ordered with the drops and lands before the
+// replace, referencing the relation it replaces (SUPA_CHECK_FORWARD_REFERENCE_ORDER).
+function suppressReplacedRelationGrantDrops(
+  operations: MigrationOperation[]
+): MigrationOperation[] {
+  const replacedIdentities = new Set<string>();
+  for (const operation of operations) {
+    if (
+      operation.kind === "replace" &&
+      operation.destructive &&
+      grantOwnerReplaceKinds.has(operation.ref.kind)
+    ) {
+      replacedIdentities.add(refIdentity(operation.ref));
+    }
+  }
+  if (replacedIdentities.size === 0) {
+    return operations;
+  }
+  return operations.filter((operation) => {
+    if (operation.kind !== "drop" || operation.ref.kind !== "grant") {
+      return true;
+    }
+    const target = operation.before?.metadata.targetIdentity;
+    return typeof target !== "string" || !replacedIdentities.has(target);
+  });
 }
 
 function appendOperationDiagnostics(

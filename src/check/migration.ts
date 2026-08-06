@@ -8,6 +8,7 @@ import {
   columnFacts,
   functionIdentity,
   objectWithArgsIdentity,
+  qualifiedName,
   rangeVarName,
   readArray,
   readBoolean,
@@ -120,6 +121,7 @@ interface StatementOrderFacts {
   columnReferences: Set<string>;
   createdColumns: Set<string>;
   createdRelations: Set<string>;
+  droppedRelations: Set<string>;
   references: Set<string>;
   statement: AstStatement;
 }
@@ -137,6 +139,7 @@ async function forwardReferenceOrderDiagnostics(
       columnReferences: new Set(dependencies.columnReferences),
       createdColumns: createdColumnIdentities(statement),
       createdRelations: createdRelationIdentities(statement),
+      droppedRelations: droppedRelationIdentities(statement),
       references: new Set(dependencies.references),
       statement,
     });
@@ -148,6 +151,12 @@ async function forwardReferenceOrderDiagnostics(
     if (!current) {
       continue;
     }
+    // A dropped relation pre-exists the migration: before its DROP the object is
+    // already present (the drop+create replace lane), so an earlier reference is
+    // not a forward reference to a not-yet-created object. A reference inside the
+    // drop→create gap still flags because the DROP has not been walked back over yet.
+    removeAll(laterRelations, current.droppedRelations);
+    removeColumnsForRelations(laterColumns, current.droppedRelations);
     const forwardRelations = [...current.references].filter((reference) =>
       laterRelations.has(reference)
     );
@@ -264,6 +273,32 @@ function addRangeVarIdentity(into: Set<string>, value: unknown): void {
   }
 }
 
+const RELATION_DROP_REMOVE_TYPES = new Set([
+  "OBJECT_FOREIGN TABLE",
+  "OBJECT_MATVIEW",
+  "OBJECT_SEQUENCE",
+  "OBJECT_TABLE",
+  "OBJECT_VIEW",
+]);
+
+function droppedRelationIdentities(statement: AstStatement): Set<string> {
+  const identities = new Set<string>();
+  if (statement.tag !== "DropStmt") {
+    return identities;
+  }
+  const node = asRecord(statement.node.DropStmt);
+  if (!(node && RELATION_DROP_REMOVE_TYPES.has(readString(node.removeType) ?? ""))) {
+    return identities;
+  }
+  for (const object of readArray(node.objects)) {
+    const name = qualifiedName(object);
+    if (name) {
+      identities.add(`${name.schema}.${name.name}`);
+    }
+  }
+  return identities;
+}
+
 function relationIdentity(value: unknown): string | undefined {
   const name = rangeVarName(value);
   return name ? `${name.schema}.${name.name}` : undefined;
@@ -272,6 +307,21 @@ function relationIdentity(value: unknown): string | undefined {
 function addAll<T>(into: Set<T>, values: Iterable<T>): void {
   for (const value of values) {
     into.add(value);
+  }
+}
+
+function removeAll<T>(from: Set<T>, values: Iterable<T>): void {
+  for (const value of values) {
+    from.delete(value);
+  }
+}
+
+function removeColumnsForRelations(columns: Set<string>, relations: ReadonlySet<string>): void {
+  for (const identity of [...columns]) {
+    const relation = identity.slice(0, identity.lastIndexOf("."));
+    if (relations.has(relation)) {
+      columns.delete(identity);
+    }
   }
 }
 

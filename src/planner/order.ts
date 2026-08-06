@@ -311,6 +311,9 @@ function operationDependencyEdge(
   dependencyOperation: MigrationOperation,
   operationByKey: ReadonlyMap<string, MigrationOperation>
 ): [string, string] | undefined {
+  if (isRoutineDropAfterRelationReplace(operation, dependencyOperation)) {
+    return [dependencyOperation.key, operation.key];
+  }
   if (isTableAlterDependency(dependencyOperation)) {
     const source =
       operation.kind === "drop" ? operation.before : (operation.after ?? operation.before);
@@ -376,6 +379,28 @@ function columnRewriteDependencyKeys(
     }
   }
   return [...keys];
+}
+
+const routineDropKinds = new Set<ObjectKind>(["function", "procedure"]);
+const replacedRelationDropKinds = new Set<ObjectKind>([
+  "foreign-table",
+  "materialized-view",
+  "table",
+]);
+
+// A routine drop never blocks a relation replace, but a trigger on the replaced
+// relation blocks the routine drop (SQLSTATE 2BP01). The replace removes that
+// trigger, so the routine drop must follow the replace rather than precede it.
+function isRoutineDropAfterRelationReplace(
+  operation: MigrationOperation,
+  dependencyOperation: MigrationOperation
+): boolean {
+  return (
+    operation.kind === "drop" &&
+    routineDropKinds.has(operation.ref.kind) &&
+    dependencyOperation.kind === "replace" &&
+    replacedRelationDropKinds.has(dependencyOperation.ref.kind)
+  );
 }
 
 function isTableAlterDependency(operation: MigrationOperation): boolean {

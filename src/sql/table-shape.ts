@@ -304,6 +304,18 @@ function canonicalConstraintPayload(value: unknown): unknown {
   if (!record) {
     return value;
   }
+  const unifiedInPredicate = unifiedInPredicatePayload(record);
+  if (unifiedInPredicate) {
+    return unifiedInPredicate;
+  }
+  const unifiedBetween = unifiedBetweenPayload(record);
+  if (unifiedBetween) {
+    return unifiedBetween;
+  }
+  const constant = constantTypeCastPayload(record);
+  if (constant !== undefined) {
+    return constant;
+  }
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(record)) {
     result[key] =
@@ -312,6 +324,123 @@ function canonicalConstraintPayload(value: unknown): unknown {
         : canonicalConstraintPayload(child);
   }
   return result;
+}
+
+// PostgreSQL catalogs decompile `x IN (a, b)` as `x = ANY (ARRAY[a, b])` (and
+// `NOT IN` as `<> ALL`), and attach literal casts the authored form omits. Both
+// spellings describe the same predicate, so they must hash identically or a
+// catalog-decompiled corpus and an authored tree plan spurious replacements.
+function unifiedInPredicatePayload(record: AstNode): Record<string, unknown> | undefined {
+  const expression = asRecord(record.A_Expr);
+  if (!expression) {
+    return;
+  }
+  const kind = readString(expression.kind);
+  if (kind !== "AEXPR_IN" && kind !== "AEXPR_OP_ANY" && kind !== "AEXPR_OP_ALL") {
+    return;
+  }
+  const rexpr = asRecord(expression.rexpr);
+  const items =
+    kind === "AEXPR_IN"
+      ? readArray(asRecord(rexpr?.List)?.items)
+      : readArray(asRecord(rexpr?.A_ArrayExpr)?.elements);
+  if (items.length === 0) {
+    return;
+  }
+  return {
+    A_Expr: {
+      kind: "AEXPR_IN",
+      name: readArray(expression.name).map(canonicalConstraintPayload),
+      lexpr: canonicalConstraintPayload(stripLocations(expression.lexpr)),
+      elements: items.map(canonicalConstraintPayload),
+    },
+  };
+}
+
+// Catalogs decompile `x BETWEEN a AND b` into `(x >= a) AND (x <= b)` (and
+// `NOT BETWEEN` into `(x < a) OR (x > b)`). Expand the authored form the same
+// way so both spellings hash identically.
+function unifiedBetweenPayload(record: AstNode): Record<string, unknown> | undefined {
+  const expression = asRecord(record.A_Expr);
+  if (!expression) {
+    return;
+  }
+  const kind = readString(expression.kind);
+  if (kind !== "AEXPR_BETWEEN" && kind !== "AEXPR_NOT_BETWEEN") {
+    return;
+  }
+  const bounds = readArray(asRecord(asRecord(expression.rexpr)?.List)?.items);
+  const low = bounds[0];
+  const high = bounds[1];
+  if (low === undefined || high === undefined) {
+    return;
+  }
+  const lexpr = stripLocations(expression.lexpr);
+  const comparison = (operator: string, bound: unknown): Record<string, unknown> => ({
+    A_Expr: {
+      kind: "AEXPR_OP",
+      name: [{ String: { sval: operator } }],
+      lexpr: canonicalConstraintPayload(lexpr),
+      rexpr: canonicalConstraintPayload(stripLocations(bound)),
+    },
+  });
+  const [lowerOperator, upperOperator, boolop] =
+    kind === "AEXPR_BETWEEN" ? [">=", "<=", "AND_EXPR"] : ["<", ">", "OR_EXPR"];
+  return {
+    BoolExpr: {
+      boolop,
+      args: [comparison(lowerOperator, low), comparison(upperOperator, high)],
+    },
+  };
+}
+
+// Casts a catalog attaches to constant literals (for example `'a'::text`) carry
+// no information the column's type does not already supply in context, while
+// typmod casts (for example `::numeric(12,2)`) and array casts stay semantic.
+const constantCastTypes = new Set([
+  "bigint",
+  "boolean",
+  "bool",
+  "bpchar",
+  "character",
+  "character varying",
+  "date",
+  "double precision",
+  "float4",
+  "float8",
+  "int2",
+  "int4",
+  "int8",
+  "integer",
+  "json",
+  "jsonb",
+  "name",
+  "numeric",
+  "real",
+  "smallint",
+  "text",
+  "time",
+  "timestamp",
+  "timestamp with time zone",
+  "timestamp without time zone",
+  "timestamptz",
+  "uuid",
+  "varchar",
+]);
+
+function constantTypeCastPayload(record: AstNode): unknown {
+  const typeCast = asRecord(record.TypeCast);
+  if (!typeCast) {
+    return;
+  }
+  const arg = asRecord(typeCast.arg);
+  if (!arg || arg.A_Const === undefined) {
+    return;
+  }
+  if (!constantCastTypes.has(typeNameToSql(typeCast.typeName))) {
+    return;
+  }
+  return canonicalConstraintPayload(stripLocations(arg));
 }
 
 function canonicalConstraintTypeName(value: unknown): unknown {
