@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -508,6 +508,147 @@ describe("actual context hook entrypoints", () => {
     expect(honest).toMatchObject({ code: 0, stderr: "", stdout: "" });
   });
 });
+
+describe("comment-free source write-time enforcement", () => {
+  const probeDirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(probeDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function writeProbe(content: string): Promise<string> {
+    const dir = await mkdtemp(join(root, "tests", "comment-hook-"));
+    probeDirs.push(dir);
+    const file = join(dir, "probe.ts");
+    await writeFile(file, content, "utf8");
+    return slash(file);
+  }
+
+  async function runEdit(toolName: string, toolInput: Record<string, unknown>) {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-comment-hook-state-"));
+    return runHook(
+      join(root, ".claude/hooks/context-pre-tool-use.mjs"),
+      {
+        hook_event_name: "PreToolUse",
+        session_id: `comment-hook-${Math.random().toString(36).slice(2)}`,
+        tool_name: toolName,
+        tool_input: toolInput,
+      },
+      hookEnvironment("claude", { STATE_DIR: stateDir })
+    );
+  }
+
+  function decision(stdout: string): { decision?: string; reason?: string } {
+    const specific = hookOutput(stdout).hookSpecificOutput;
+    return specific?.permissionDecision === "deny"
+      ? { decision: "deny", reason: specific.permissionDecisionReason }
+      : {};
+  }
+
+  it("denies a Write that adds a line comment to tracked JS/TS", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "export const x = 1;\n// explain\n",
+    });
+    expect(decision(result.stdout)).toMatchObject({
+      decision: "deny",
+      reason: expect.stringContaining("rule 07"),
+    });
+  });
+
+  it("denies a Write that adds a block comment", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "export const x = 1; /* hi */\n",
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows a clean Write to tracked JS/TS", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "export const x = 1;\n",
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("allows // inside a string literal", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: 'export const s = "a // not a comment";\n',
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("allows a shebang on line 1", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "#!/usr/bin/env node\nexport const x = 1;\n",
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("ignores non-code paths (markdown, python)", async () => {
+    const md = await runEdit("Write", { file_path: "README.md", content: "<!-- c -->\n" });
+    expect(decision(md.stdout).decision).toBeUndefined();
+    const py = await runEdit("Write", {
+      file_path: "src/__probe.py",
+      content: "# comment\nx = 1\n",
+    });
+    expect(decision(py.stdout).decision).toBeUndefined();
+  });
+
+  it("denies an Edit that adds a comment", async () => {
+    const file = await writeProbe("export const x = 1;\n");
+    const result = await runEdit("Edit", {
+      file_path: file,
+      old_string: "x = 1;",
+      new_string: "x = 1;\n// new",
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows a clean Edit to a file that already has a comment", async () => {
+    const file = await writeProbe("export const x = 1;\n// existing\n");
+    const result = await runEdit("Edit", {
+      file_path: file,
+      old_string: "x = 1;",
+      new_string: "x = 2;",
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("denies a MultiEdit where one edit adds a comment", async () => {
+    const file = await writeProbe("export const a = 1;\nexport const b = 2;\n");
+    const result = await runEdit("MultiEdit", {
+      file_path: file,
+      edits: [
+        { old_string: "a = 1;", new_string: "a = 11;" },
+        { old_string: "b = 2;", new_string: "b = 22;\n// added" },
+      ],
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("denies an apply_patch update that adds a comment line", async () => {
+    const file = await writeProbe("export const x = 1;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n-x = 1;\n+x = 2;\n+// added\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("denies an apply_patch add of a new commented file under src", async () => {
+    const result = await runEdit("apply_patch", {
+      command: "*** Add File: src/__new_probe.ts\n+export const x = 1;\n+// comment\n",
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+});
+
+function slash(absolutePath: string): string {
+  return relative(root, absolutePath).split(sep).join("/");
+}
 
 function matcherFor(config: any, eventName: string, commandFragment: string): string | undefined {
   for (const entry of config.hooks?.[eventName] ?? []) {

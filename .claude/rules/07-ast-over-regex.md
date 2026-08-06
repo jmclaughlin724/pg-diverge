@@ -25,7 +25,7 @@ Guards enforce observable structure or behavior: AST shape, file existence, JSON
 
 ## Comment-free source
 
-The same guard runs `scripts/guards/code-shape/check-change-discipline.mjs`, which owns a second invariant: tracked JS/TS source carries no comments. Line comments, block comments, and JSDoc are all violations; the only exemption is a shebang at the start of the file. The scanned set is every tracked `.cjs`, `.js`, `.jsx`, `.mjs`, `.ts`, and `.tsx` file (excluding `.d.ts`) under the roots listed above, plus root `prettier.config.mjs` and `vitest.config.ts`. Python and shell sources carry the same rule through their own detectors.
+The comment detector and code-file classifier are owned by `scripts/lib/source-comments.mjs`, consumed by two boundaries so they cannot drift. `scripts/guards/code-shape/check-change-discipline.mjs` runs the invariant at push time inside `npm run guard`: tracked JS/TS source carries no comments. Line comments, block comments, and JSDoc are all violations; the only exemption is a shebang at the start of the file. The scanned set is every tracked `.cjs`, `.js`, `.jsx`, `.mjs`, `.ts`, and `.tsx` file (excluding `.d.ts`) under the roots listed above, plus root `prettier.config.mjs` and `vitest.config.ts`. Python and shell sources carry the same rule through their own detectors. `scripts/agent-hooks/comment-free-source.mjs` enforces the same invariant at write time in the maintainer PreToolUse runner, denying a `Write`/`Edit`/`MultiEdit`/`apply_patch` that adds a comment to tracked JS/TS source before the tool runs; Python and shell stay push-guard-only.
 
 Explain non-obvious intent through a surface that outlives the code:
 
