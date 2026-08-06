@@ -388,9 +388,6 @@ const replacedRelationDropKinds = new Set<ObjectKind>([
   "table",
 ]);
 
-// A routine drop never blocks a relation replace, but a trigger on the replaced
-// relation blocks the routine drop (SQLSTATE 2BP01). The replace removes that
-// trigger, so the routine drop must follow the replace rather than precede it.
 function isRoutineDropAfterRelationReplace(
   operation: MigrationOperation,
   dependencyOperation: MigrationOperation

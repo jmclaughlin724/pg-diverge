@@ -151,10 +151,6 @@ async function forwardReferenceOrderDiagnostics(
     if (!current) {
       continue;
     }
-    // A dropped relation pre-exists the migration: before its DROP the object is
-    // already present (the drop+create replace lane), so an earlier reference is
-    // not a forward reference to a not-yet-created object. A reference inside the
-    // drop→create gap still flags because the DROP has not been walked back over yet.
     removeAll(laterRelations, current.droppedRelations);
     removeColumnsForRelations(laterColumns, current.droppedRelations);
     const forwardRelations = [...current.references].filter((reference) =>

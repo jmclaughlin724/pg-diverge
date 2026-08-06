@@ -254,11 +254,6 @@ const grantOwnerReplaceKinds = new Set<ObjectKind>([
   "view",
 ]);
 
-// A destructive relation replace removes every privilege with the old relation
-// and the dependents machinery re-creates them from the target state, so a
-// separately rendered grant drop is redundant. Worse, a grant drop that
-// reverse-renders as a GRANT is ordered with the drops and lands before the
-// replace, referencing the relation it replaces (SUPA_CHECK_FORWARD_REFERENCE_ORDER).
 function suppressReplacedRelationGrantDrops(
   operations: MigrationOperation[]
 ): MigrationOperation[] {

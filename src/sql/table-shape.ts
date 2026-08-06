@@ -326,10 +326,6 @@ function canonicalConstraintPayload(value: unknown): unknown {
   return result;
 }
 
-// PostgreSQL catalogs decompile `x IN (a, b)` as `x = ANY (ARRAY[a, b])` (and
-// `NOT IN` as `<> ALL`), and attach literal casts the authored form omits. Both
-// spellings describe the same predicate, so they must hash identically or a
-// catalog-decompiled corpus and an authored tree plan spurious replacements.
 function unifiedInPredicatePayload(record: AstNode): Record<string, unknown> | undefined {
   const expression = asRecord(record.A_Expr);
   if (!expression) {
@@ -357,9 +353,6 @@ function unifiedInPredicatePayload(record: AstNode): Record<string, unknown> | u
   };
 }
 
-// Catalogs decompile `x BETWEEN a AND b` into `(x >= a) AND (x <= b)` (and
-// `NOT BETWEEN` into `(x < a) OR (x > b)`). Expand the authored form the same
-// way so both spellings hash identically.
 function unifiedBetweenPayload(record: AstNode): Record<string, unknown> | undefined {
   const expression = asRecord(record.A_Expr);
   if (!expression) {
@@ -394,9 +387,6 @@ function unifiedBetweenPayload(record: AstNode): Record<string, unknown> | undef
   };
 }
 
-// Casts a catalog attaches to constant literals (for example `'a'::text`) carry
-// no information the column's type does not already supply in context, while
-// typmod casts (for example `::numeric(12,2)`) and array casts stay semantic.
 const constantCastTypes = new Set([
   "bigint",
   "boolean",
