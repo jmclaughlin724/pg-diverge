@@ -7,19 +7,35 @@ import {
   unsupportedStatementSupport,
 } from "../../src/sql/support.js";
 
+function tableRowLabels(markdown: string): string[] {
+  const labels: string[] = [];
+  for (const line of markdown.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) {
+      continue;
+    }
+    const [, firstCell] = trimmed.split("|");
+    if (firstCell !== undefined) {
+      labels.push(firstCell.trim());
+    }
+  }
+  return labels;
+}
+
 describe("SQL support contract", () => {
   it("keeps the public support matrix aligned with the executable contract", async () => {
     const [docs, sources] = await Promise.all([
       readFile("docs/reference/support-matrix.mdx", "utf8"),
       readFile("docs/concepts/sources.mdx", "utf8"),
     ]);
+    const documentedRows = tableRowLabels(docs);
 
     expect(docs).toContain("src/sql/support.ts");
     for (const label of new Set(modeledObjectSupport.map((item) => item.label))) {
-      expect(docs).toContain(`| ${label} |`);
+      expect(documentedRows).toContain(label);
     }
     for (const boundary of unsupportedStatementSupport.map((item) => item.boundary)) {
-      expect(docs).toContain(`| ${boundary} |`);
+      expect(documentedRows).toContain(boundary);
     }
     expect(sourceIntentStatementTags).toContain("GrantRoleStmt");
     expect(docs).toContain("Role-membership `GRANT` and `REVOKE`");

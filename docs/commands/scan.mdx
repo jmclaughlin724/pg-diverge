@@ -35,20 +35,11 @@ With no `--from`, `scan` reads `dir:<config.schemaPaths[0]>`. Output is credenti
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Source to scan. Defaults to the configured declarative tree.
-</ParamField>
-
-<ParamField path="--contract-usage" type="directory">
-  Also scan TypeScript files under this directory for generated-contract usage
-  diagnostics. The scan uses `typesFile` and `zodFile` from config to identify
-  generated contract imports.
-</ParamField>
-
-<ParamField path="--reporter" type="text | json | github | sarif">
-  Output format. Use `json` for Action PR comments and check runs. An unknown
-  value exits `2` with an error.
-</ParamField>
+| Name               | Type                            | Description                                                                                                                                                                           |
+| ------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--from`           | source                          | Source to scan. Defaults to the configured declarative tree.                                                                                                                          |
+| `--contract-usage` | directory                       | Also scan TypeScript files under this directory for generated-contract usage diagnostics. The scan uses `typesFile` and `zodFile` from config to identify generated contract imports. |
+| `--reporter`       | text \| json \| github \| sarif | Output format. Use `json` for Action PR comments and check runs. An unknown value exits `2` with an error.                                                                            |
 
 ## What it scores
 

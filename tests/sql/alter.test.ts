@@ -104,6 +104,37 @@ describe("column-level alter lane", () => {
     expect(sql).not.toContain("-- review: USING is an identity cast");
   });
 
+  it("renders spaced nested parenthesized defaults as balanced SQL", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.accounts (id bigint);",
+      "CREATE TABLE app.accounts (id bigint DEFAULT ( ( 1 ) ));"
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+    const sql = renderMigration(plan, { includeHeader: false });
+    const diagnostics = await checkMigrationSql(sql);
+
+    expect(operation?.blocked).toBe(false);
+    expect(sql).toContain('ALTER TABLE "app"."accounts" ALTER COLUMN "id" SET DEFAULT ( ( 1 ) );');
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  });
+
+  it.each([
+    ["block", "( /* keep the wrapper balanced */ ( 1 ) )"],
+    ["line", "( -- keep the wrapper balanced\n ( 1 ) )"],
+  ])("renders %s-commented parenthesized defaults as balanced SQL", async (_kind, expression) => {
+    const plan = await diff(
+      "CREATE TABLE app.accounts (id bigint);",
+      `CREATE TABLE app.accounts (id bigint DEFAULT ${expression});`
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+    const sql = renderMigration(plan, { includeHeader: false });
+    const diagnostics = await checkMigrationSql(sql);
+
+    expect(operation?.blocked).toBe(false);
+    expect(sql).toContain('ALTER TABLE "app"."accounts" ALTER COLUMN "id" SET DEFAULT (');
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  });
+
   it("validates a temporary check before setting NOT NULL", async () => {
     const plan = await diff(
       "CREATE TABLE app.accounts (id bigint PRIMARY KEY, label varchar(10));",

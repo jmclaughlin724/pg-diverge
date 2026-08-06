@@ -104,9 +104,9 @@ describe("catalog grant extraction", () => {
     expect(objects).toHaveLength(1);
     expect(objects[0]?.metadata).toMatchObject({
       columnPrivileges: { SELECT: ["id", "name"] },
+      grantOptionPrivileges: [],
       grantee: "app_user",
       privileges: ["INSERT", "SELECT"],
-      withGrantOption: false,
     });
     expect(objects[0]?.sql).toBe(
       'GRANT INSERT, SELECT ("id", "name") ON TABLE "app"."items" TO "app_user"'
@@ -218,14 +218,20 @@ describe("catalog grant extraction", () => {
     const objects = await collectGrants(pool);
 
     expect(objects).toHaveLength(4);
-    expect(objects.every((object) => object.metadata.withGrantOption === true)).toBe(true);
+    expect(
+      objects.every(
+        (object) =>
+          JSON.stringify(object.metadata.grantOptionPrivileges) ===
+          JSON.stringify(object.metadata.privileges)
+      )
+    ).toBe(true);
     expect(objects.every((object) => object.sql.endsWith(" WITH GRANT OPTION"))).toBe(true);
     expect(
       objects.find((object) => object.metadata.targetIdentity === "app.remote_items")?.sql
     ).toBe('GRANT SELECT ON TABLE "app"."remote_items" TO "app_user" WITH GRANT OPTION');
   });
 
-  it("rejects mixed grant-option states for one semantic grant", async () => {
+  it("preserves mixed grant-option states for one semantic grant", async () => {
     const { pool } = grantPool({
       relation: [
         {
@@ -247,7 +253,16 @@ describe("catalog grant extraction", () => {
       ],
     });
 
-    await expect(collectGrants(pool)).rejects.toThrow("mixed grant-option states");
+    const [grant] = await collectGrants(pool);
+
+    expect(grant?.metadata).toMatchObject({
+      grantOptionPrivileges: ["SELECT"],
+      privileges: ["INSERT", "SELECT"],
+    });
+    expect(grant?.sql).toBe(
+      'GRANT INSERT, SELECT ON TABLE "app"."items" TO "app_user";\n' +
+        'GRANT SELECT ON TABLE "app"."items" TO "app_user" WITH GRANT OPTION'
+    );
   });
 });
 
@@ -303,7 +318,7 @@ describe("catalog default privilege extraction", () => {
     expect(objects[0]?.metadata.forRole).toBeUndefined();
   });
 
-  it("rejects default ACL grant options that the model cannot preserve", async () => {
+  it("preserves default ACL grant options", async () => {
     const pool: CatalogQuery = {
       query(sql: string) {
         if (!sql.includes("lateral aclexplode(d.defaclacl)")) {
@@ -324,8 +339,15 @@ describe("catalog default privilege extraction", () => {
       },
     };
 
-    await expect(collectDefaultPrivileges(pool)).rejects.toThrow(
-      "uses a grant option that cannot be represented safely"
+    const [grant] = await collectDefaultPrivileges(pool);
+
+    expect(grant?.metadata).toMatchObject({
+      grantOptionPrivileges: ["SELECT"],
+      privileges: ["SELECT"],
+    });
+    expect(grant?.sql).toBe(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE "app_owner" IN SCHEMA "app" ' +
+        'GRANT SELECT ON TABLES TO "app_user" WITH GRANT OPTION'
     );
   });
 });

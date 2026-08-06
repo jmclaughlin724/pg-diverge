@@ -1,0 +1,49 @@
+{
+  "id": "evt_invoice_paid_basil",
+  "object": "event",
+  "api_version": "2025-03-31.basil",
+  "type": "invoice.paid",
+  "data": {
+    "object": {
+      "id": "in_basil",
+      "object": "invoice",
+      "billing_reason": "subscription_cycle",
+      "currency": "usd",
+      "customer": "cus_basil",
+      "amount_paid": 9900,
+      "status": "paid",
+      "lines": {
+        "data": [
+          {
+            "id": "il_basil",
+            "object": "line_item",
+            "parent": {
+              "type": "subscription_item_details",
+              "subscription_item_details": {
+                "subscription": "sub_123",
+                "subscription_item": "si_123"
+              }
+            },
+            "period": {
+              "start": 1802592000,
+              "end": 1805270400
+            },
+            "pricing": {
+              "type": "price_details",
+              "price_details": {
+                "price": "price_subscription"
+              }
+            }
+          }
+        ]
+      },
+      "parent": {
+        "type": "subscription_details",
+        "subscription_details": {
+          "subscription": "sub_123",
+          "metadata": {}
+        }
+      }
+    }
+  }
+}

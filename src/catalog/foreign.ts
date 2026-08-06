@@ -1,7 +1,7 @@
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
 import type { SchemaObject } from "../types.js";
-import { type CatalogQuery, managedSchemaFilter, notExtensionMember, text } from "./query.js";
+import { type CatalogQuery, catalogSchemaFilter, notExtensionMember, text } from "./query.js";
 
 export async function collectForeignObjects(pool: CatalogQuery): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = [];
@@ -41,7 +41,7 @@ export async function collectForeignObjects(pool: CatalogQuery): Promise<SchemaO
     join pg_class c on c.oid = ft.ftrelid
     join pg_namespace n on n.oid = c.relnamespace
     join pg_foreign_server s on s.oid = ft.ftserver
-    where ${managedSchemaFilter}
+    where ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);

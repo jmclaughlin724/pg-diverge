@@ -166,7 +166,7 @@ describe("migrations source replay", () => {
     expect(first.formatVersion).toBe(MODEL_FORMAT_VERSION);
     expect(first.objects).toHaveLength(246);
     expect(first.fingerprint).toBe(
-      "4f372c330acc0e0aa9ff067597cbb9b1095298ebbc88565759db92ccacca5be7"
+      "13e63abff9a09d43a51c2a503fc8035225ad4960a893925f77dabe6a1b91c5e2"
     );
     expect(second.objects.map(({ hash, key }) => ({ hash, key }))).toEqual(
       first.objects.map(({ hash, key }) => ({ hash, key }))
@@ -685,6 +685,119 @@ ALTER TABLE app.accounts RENAME TO customers;`,
     expect(table(model, "view:app.account_ids")?.sql).toContain("customers");
   });
 
+  it("rebinds a column comment identity when the column is renamed", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_commented_column.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+COMMENT ON COLUMN app.accounts.email IS 'contact';
+ALTER TABLE app.accounts RENAME COLUMN email TO contact_email;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.metadata.commentTarget).toMatchObject({
+      kind: "column",
+      name: "contact_email",
+      table: "accounts",
+    });
+    expect(comments[0]?.sql).toContain("contact_email");
+    expect(comments[0]?.sql).not.toContain("accounts.email");
+  });
+
+  it("rebinds table and column comment identities when the table is renamed", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_commented_table.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+COMMENT ON TABLE app.accounts IS 'directory';
+COMMENT ON COLUMN app.accounts.email IS 'contact';
+ALTER TABLE app.accounts RENAME TO customers;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const targets = model.objects
+      .filter((object) => object.ref.kind === "comment")
+      .map((object) => object.metadata.commentTarget);
+    expect(targets).toHaveLength(2);
+    expect(targets).toContainEqual(expect.objectContaining({ kind: "table", name: "customers" }));
+    expect(targets).toContainEqual(
+      expect.objectContaining({ kind: "column", name: "email", table: "customers" })
+    );
+    for (const comment of model.objects.filter((object) => object.ref.kind === "comment")) {
+      expect(comment.sql).toContain("customers");
+      expect(comment.sql).not.toContain("accounts");
+    }
+
+    const declarative = await extractMigrations([
+      [
+        "20240101000000_commented_table.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.customers (id integer, email text);
+COMMENT ON TABLE app.customers IS 'directory';
+COMMENT ON COLUMN app.customers.email IS 'contact';`,
+      ],
+    ]);
+    const replayHashes = model.objects
+      .filter((object) => object.ref.kind === "comment")
+      .map((object) => object.hash)
+      .sort((left, right) => left.localeCompare(right));
+    const declarativeHashes = declarative.objects
+      .filter((object) => object.ref.kind === "comment")
+      .map((object) => object.hash)
+      .sort((left, right) => left.localeCompare(right));
+    expect(replayHashes).toEqual(declarativeHashes);
+  });
+
+  it("rebuilds renamed comment SQL with quoted identifiers", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_quoted_table.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+COMMENT ON TABLE app.accounts IS 'directory';
+COMMENT ON COLUMN app.accounts.email IS 'contact';
+ALTER TABLE app.accounts RENAME TO "Purchase Order";`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(2);
+    const tableComment = comments.find(
+      (object) => object.metadata.descriptor === "table app.Purchase Order"
+    );
+    expect(tableComment?.sql).toBe(`COMMENT ON TABLE app."Purchase Order" IS 'directory'`);
+    const columnComment = comments.find(
+      (object) => object.metadata.descriptor === "column app.Purchase Order.email"
+    );
+    expect(columnComment?.sql).toBe(`COMMENT ON COLUMN app."Purchase Order".email IS 'contact'`);
+  });
+
+  it("preserves empty-string comments and deletes only IS NULL comments", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_empty_comment.sql",
+        `CREATE SCHEMA app;
+CREATE SCHEMA other;
+COMMENT ON SCHEMA app IS '';
+COMMENT ON SCHEMA other IS 'temp';
+COMMENT ON SCHEMA other IS NULL;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.metadata.description).toBe("");
+    expect(comments[0]?.metadata.commentTarget).toMatchObject({ kind: "schema", name: "app" });
+  });
+
   it("hard-fails unsupported rename types without returning partial objects", async () => {
     const model = await extractMigrations([
       [
@@ -962,6 +1075,146 @@ ALTER TABLE app.accounts ADD CONSTRAINT accounts_name_check CHECK (name IS NOT N
     expect(table(model, "constraint:app.accounts_name_check:accounts")).toBeDefined();
   });
 
+  it("hashes each constraint in a replayed multi-command ALTER like the declarative tree", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraints.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, score integer);
+ALTER TABLE app.accounts
+  ADD CONSTRAINT accounts_id_positive CHECK (id > 0),
+  ADD CONSTRAINT accounts_score_positive CHECK (score > 0);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  score integer,
+  CONSTRAINT accounts_id_positive CHECK (id > 0),
+  CONSTRAINT accounts_score_positive CHECK (score > 0)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const constraintKeys = [
+      "constraint:app.accounts_id_positive:accounts",
+      "constraint:app.accounts_score_positive:accounts",
+    ];
+    for (const key of constraintKeys) {
+      expect(table(history, key)?.hash).toBe(table(declared, key)?.hash);
+    }
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("preserves single-command ADD CONSTRAINT source facets during replay", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraint.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, included integer);
+ALTER TABLE ONLY app.accounts
+  ADD CONSTRAINT accounts_id_key UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  included integer,
+  CONSTRAINT accounts_id_key UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const key = "constraint:app.accounts_id_key:accounts";
+    const replayedConstraint = table(history, key);
+    expect(replayedConstraint?.sql).toContain("ALTER TABLE ONLY app.accounts");
+    expect(replayedConstraint?.sql).toContain("INCLUDE (included)");
+    expect(replayedConstraint?.sql).toContain("WITH (fillfactor = 80)");
+    expect(replayedConstraint?.hash).toBe(table(declared, key)?.hash);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("preserves source facets and the allocated name for an unnamed single command", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraint.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, included integer);
+ALTER TABLE ONLY app.accounts
+  ADD UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  included integer,
+  UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const key = "constraint:app.accounts_id_key:accounts";
+    const replayedConstraint = table(history, key);
+    expect(replayedConstraint?.sql).toContain('CONSTRAINT "accounts_id_key"');
+    expect(replayedConstraint?.sql).toContain("INCLUDE (included)");
+    expect(replayedConstraint?.sql).toContain("WITH (fillfactor = 80)");
+    expect(replayedConstraint?.hash).toBe(table(declared, key)?.hash);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("preserves source facets for an unnamed constraint in a multi-command ALTER", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraints.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, included integer, score integer);
+-- résumé
+ALTER TABLE ONLY app.accounts
+  ADD UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80),
+  ADD CONSTRAINT accounts_score_positive CHECK (score > 0);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  included integer,
+  score integer,
+  UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80),
+  CONSTRAINT accounts_score_positive CHECK (score > 0)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const key = "constraint:app.accounts_id_key:accounts";
+    const replayedConstraint = table(history, key);
+    expect(replayedConstraint?.sql).toContain("ALTER TABLE ONLY");
+    expect(replayedConstraint?.sql).toContain('CONSTRAINT "accounts_id_key"');
+    expect(replayedConstraint?.sql).toContain("INCLUDE (included)");
+    expect(replayedConstraint?.sql).toContain("WITH (fillfactor = 80)");
+    expect(replayedConstraint?.hash).toBe(table(declared, key)?.hash);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
   it("replays index rename before recreating the old index name", async () => {
     const model = await extractMigrations([
       [
@@ -1174,8 +1427,38 @@ ${generatedSql}`
     });
 
     expect(context.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_MIGRATION_BASELINE_UNSUPPORTED"
+      "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED"
     );
+  });
+
+  it("replays RLS state transitions across migration files", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_create.sql",
+        "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\nALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;\nALTER TABLE app.accounts FORCE ROW LEVEL SECURITY;",
+      ],
+      ["20240102000000_relax.sql", "ALTER TABLE app.accounts NO FORCE ROW LEVEL SECURITY;"],
+    ]);
+    const rls = model.objects.find((object) => object.ref.kind === "rls");
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(rls?.metadata).toMatchObject({ rlsEnabled: true, rlsForced: false });
+  });
+
+  it("removes comments through NULL and owning-column drops", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_create.sql",
+        "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, email text);\nCOMMENT ON TABLE app.accounts IS 'accounts';\nCOMMENT ON COLUMN app.accounts.email IS 'email';",
+      ],
+      [
+        "20240102000000_remove.sql",
+        "COMMENT ON TABLE app.accounts IS NULL;\nALTER TABLE app.accounts DROP COLUMN email;",
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "comment")).toEqual([]);
   });
 
   it("replays policy drop before recreating the policy name", async () => {

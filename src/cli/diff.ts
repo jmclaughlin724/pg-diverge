@@ -13,7 +13,7 @@ import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { defaultMigrationName, migrationFiles, nextMigrationFile } from "../migrations/files.js";
-import { latestLineage, parseLineage } from "../migrations/lineage.js";
+import { latestLineage, lineagePrefix, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
 import { pathContainsOrEqual } from "../paths.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
@@ -152,12 +152,28 @@ type WithSources<T> = T & {
   to: string;
 };
 
-async function withSourceDefaults<T extends PlanCommandOptions>(
+export function replacedMigrationFiles(replace: string | undefined): string[] | undefined {
+  if (replace === undefined) {
+    return;
+  }
+  const replacementPath = resolve(process.cwd(), replace);
+  return [replacementPath, `${stripSqlExtension(replacementPath)}.concurrent.sql`];
+}
+
+async function withSourceDefaults<T extends PlanCommandOptions & { replace?: string }>(
   options: T,
   config: SupaschemaConfig
 ): Promise<WithSources<T>> {
   const mode = planningMode(options);
-  const resolved = await resolveGenerationSourceDefaults({ ...options, mode }, config);
+  const excludeMigrationFiles = replacedMigrationFiles(options.replace);
+  const resolved = await resolveGenerationSourceDefaults(
+    {
+      ...options,
+      ...(excludeMigrationFiles === undefined ? {} : { excludeMigrationFiles }),
+      mode,
+    },
+    config
+  );
   if (resolved.notice !== undefined) {
     process.stderr.write(resolved.notice);
   }
@@ -506,19 +522,11 @@ function buildPlan(
   options: WithSources<PlanCommandOptions> & { migrationsDir?: string; replace?: string },
   config: SupaschemaConfig
 ): Promise<MigrationPlan> {
-  const replacementPath =
-    options.replace === undefined ? undefined : resolve(process.cwd(), options.replace);
+  const excludeMigrationFiles = replacedMigrationFiles(options.replace);
   return buildSchemaDiffPlan({
     ...(options.replace === undefined ? {} : { checkMigrationBaseline: false }),
     config,
-    ...(replacementPath === undefined
-      ? {}
-      : {
-          excludeMigrationFiles: [
-            replacementPath,
-            `${stripSqlExtension(replacementPath)}.concurrent.sql`,
-          ],
-        }),
+    ...(excludeMigrationFiles === undefined ? {} : { excludeMigrationFiles }),
     from: options.from,
     ...(options.migrationsDir === undefined ? {} : { migrationsDir: options.migrationsDir }),
     mode: options.mode,
@@ -540,7 +548,7 @@ async function diffWorkspacePreflightDiagnostics(
   config: SupaschemaConfig,
   configPath: string | undefined
 ): Promise<Diagnostic[]> {
-  if (!(options.from.startsWith("git:") && options.to.startsWith("dir:"))) {
+  if (!options.to.startsWith("dir:")) {
     return [];
   }
   const toDir = normalizeGitPath(options.to.slice("dir:".length));
@@ -563,7 +571,7 @@ async function diffWorkspacePreflightDiagnostics(
   const diagnostics: Diagnostic[] = [];
   const blockingMigrations =
     options.replace === undefined
-      ? dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir))
+      ? await dirtyClosureMigrations(dirtyEntries, migrationsDir, options.from, options.schema)
       : [];
   if (blockingMigrations.length > 0) {
     diagnostics.push(
@@ -628,6 +636,33 @@ async function diffWorkspacePreflightDiagnostics(
     );
   }
   return diagnostics;
+}
+
+async function dirtyClosureMigrations(
+  dirtyEntries: GitStatusEntry[],
+  migrationsDir: string,
+  from: string,
+  schema: string | undefined
+): Promise<GitStatusEntry[]> {
+  const dirty = dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir));
+  if (from.startsWith("git:")) {
+    return dirty;
+  }
+  const blocking: GitStatusEntry[] = [];
+  for (const entry of dirty) {
+    if (schema !== undefined || (await hasLineageMarker(entry.path))) {
+      blocking.push(entry);
+    }
+  }
+  return blocking;
+}
+
+async function hasLineageMarker(path: string): Promise<boolean> {
+  try {
+    return (await readFile(path, "utf8")).includes(lineagePrefix);
+  } catch {
+    return true;
+  }
 }
 
 async function gitStatusEntries(paths: string[]): Promise<GitStatusEntry[]> {

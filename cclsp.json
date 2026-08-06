@@ -44,6 +44,16 @@
       "rootDir": "."
     },
     {
+      "extensions": ["astro"],
+      "command": ["npx", "--no-install", "astro-ls", "--stdio"],
+      "rootDir": ".",
+      "initializationOptions": {
+        "typescript": {
+          "tsdk": "node_modules/typescript/lib"
+        }
+      }
+    },
+    {
       "extensions": ["sql"],
       "command": [
         "npx",

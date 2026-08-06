@@ -19,16 +19,16 @@ Use pgfence when you want lock-mode analysis, risk scoring, and safe-rewrite rec
 
 ## Comparison
 
-| Capability | supaschema | pgfence |
-| --- | --- | --- |
-| Generates migrations | Yes, from declarative SQL | No, analyzes migrations you provide |
-| Parser | libpg_query (PostgreSQL's parser) | libpg_query (PostgreSQL's parser) |
-| Lock-mode analysis | Lock-hazard checks in `supaschema check` | Yes, per-statement lock mode and risk scoring |
-| ORM migration file analysis | No, works from declarative SQL | Yes, parses ORM-generated migration files |
-| RLS policy body changes | Compared structurally | Not its primary focus |
-| Generated types | TypeScript and Zod from the SQL tree | None |
-| License | Open source (MIT) | Source-available |
-| Database or Docker required | No | No |
+| Capability                  | supaschema                               | pgfence                                       |
+| --------------------------- | ---------------------------------------- | --------------------------------------------- |
+| Generates migrations        | Yes, from declarative SQL                | No, analyzes migrations you provide           |
+| Parser                      | libpg_query (PostgreSQL's parser)        | libpg_query (PostgreSQL's parser)             |
+| Lock-mode analysis          | Lock-hazard checks in `supaschema check` | Yes, per-statement lock mode and risk scoring |
+| ORM migration file analysis | No, works from declarative SQL           | Yes, parses ORM-generated migration files     |
+| RLS policy body changes     | Compared structurally                    | Not its primary focus                         |
+| Generated types             | TypeScript and Zod from the SQL tree     | None                                          |
+| License                     | Open source (MIT)                        | Source-available                              |
+| Database or Docker required | No                                       | No                                            |
 
 ## Why the workflow differs
 
@@ -38,15 +38,14 @@ pgfence reads migration SQL (or ORM migration files) and reports each statement'
 
 If your migrations come out of an ORM and you want lock scoring over those files, pgfence fits directly. If declarative SQL is your source of truth and you want generation plus checking in one tool, `supaschema` covers that lane.
 
-<Info>
-  Last verified 2026-06-17 against the pgfence documentation. Confirm current
-  behavior and licensing before relying on it.
-</Info>
+:::info
+Last verified 2026-06-17 against the pgfence documentation. Confirm current behavior and licensing before relying on it.
+:::
 
 <CardGroup cols={2}>
   <Card
     title="Atlas lint is paid: free alternatives"
-    icon="scale-balanced"
+    icon="scale"
     href="/comparisons/atlas-migrate-lint-paid-alternatives"
   >
     Free Postgres migration-safety options, including pgfence and supaschema.

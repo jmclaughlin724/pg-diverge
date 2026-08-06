@@ -1,11 +1,12 @@
 ---
 title: "Agent Bundle"
 description: "What the installed supaschema agent bundle provides for Claude, Codex, and AGENTS-compatible tools."
-sidebarTitle: "Agent bundle"
+sidebar:
+  label: "Agent bundle"
 keywords: ["agent bundle", "Claude Code", "Codex", "AGENTS.md", "hooks"]
 ---
 
-The agent bundle gives coding agents the same migration workflow that humans use: edit declarative SQL, generate with `diff`, check replay safety, and never hand-edit generated migration files.
+The agent bundle gives coding agents the same migration workflow that humans use: edit declarative SQL, generate with `diff`, check replay safety, and never hand-edit generated migrations or configured TypeScript/Zod contracts.
 
 `supaschema init` installs the package-owned enforcement bundle by default. The raw files also ship under `node_modules/supaschema/agent-bundle/` so agents can audit or repair files that init reported as skipped and read the complete public MDX documentation offline.
 
@@ -13,16 +14,16 @@ The agent bundle gives coding agents the same migration workflow that humans use
 
 The downloadable consumer agent bundle is intentionally narrow. Init installs only these package-owned surfaces and hook registrations; it does not copy maintainer-only tooling or write `AGENTS.md` / `CLAUDE.md`.
 
-| Surface | Files |
-| --- | --- |
-| Offline documentation | `agent-bundle/docs/index.md`, `agent-bundle/docs/**/*.mdx` |
-| Shared install prompt | `agent-bundle/agents/prompts/supaschema-install.md` |
-| Skills manifest | `agent-bundle/skills-manifest.json` with the single `supaschema` skill |
-| Shared skill | The recursive `agent-bundle/agents/skills/supaschema` directory, including its workflow references |
+| Surface               | Files                                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Offline documentation | `agent-bundle/docs/index.md`, `agent-bundle/docs/**/*.mdx`                                                      |
+| Shared install prompt | `agent-bundle/agents/prompts/supaschema-install.md`                                                             |
+| Skills manifest       | `agent-bundle/skills-manifest.json` with the single `supaschema` skill                                          |
+| Shared skill          | The recursive `agent-bundle/agents/skills/supaschema` directory, including its workflow references              |
 | Claude skill and rule | The recursive `agent-bundle/claude/skills/supaschema` directory, plus `agent-bundle/claude/rules/supaschema.md` |
-| Claude hook settings | `agent-bundle/claude/settings.<manager>.json` |
-| Codex rule mirror | `agent-bundle/codex/rules/supaschema.rules` |
-| Codex hook settings | `agent-bundle/codex/hooks.<manager>.json` |
+| Claude hook settings  | `agent-bundle/claude/settings.<manager>.json`                                                                   |
+| Codex rule mirror     | `agent-bundle/codex/rules/supaschema.rules`                                                                     |
+| Codex hook settings   | `agent-bundle/codex/hooks.<manager>.json`                                                                       |
 
 ## Install and repair
 
@@ -54,16 +55,18 @@ Rules and hooks are included in the package bundle and activated by `supaschema 
 
 The installed hooks are limited to Supaschema schema and migration behavior:
 
-| Hook | Event | Purpose |
-| --- | --- | --- |
-| `supaschema hook generated-migration-edit` | `PreToolUse` | Blocks edits to generated migration SQL when the lineage marker is present. |
-| `supaschema hook schema-write` | `PostToolUse` | Watches schema-tree SQL writes. By default it runs `supaschema diff` then checks the generated migration files; when config enables automatic sync and exactly one selected target is resolved and approved, it delegates to `supaschema sync`. |
+| Hook                                      | Event         | Purpose                                                                                                                                                                                                                                         |
+| ----------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supaschema hook generated-artifact-edit` | `PreToolUse`  | Blocks direct edit-tool writes to lineage-marked migration SQL and the exact configured `typesFile` / `zodFile` outputs.                                                                                                                        |
+| `supaschema hook schema-write`            | `PostToolUse` | Watches schema-tree SQL writes. By default it runs `supaschema diff` then checks the generated migration files; when config enables automatic sync and exactly one selected target is resolved and approved, it delegates to `supaschema sync`. |
 
-The bundle does not publish or register this repository's general Bash, Git, secret, branch, worktree, or deletion policy. Those guards are maintainer tooling for developing Supaschema itself.
+The registered artifact hook receives only actual edit tools: `Write|Edit|MultiEdit|apply_patch` for Claude and `apply_patch` for Codex. It is not a shell-policy hook or a filesystem boundary. Only an `apply_patch` delete-only change for a stale generated migration is the reviewed recovery lane; deletion of configured generated contracts stays blocked. If malformed input or invalid config prevents classification, the hook denies with `SUPA_GENERATED_ARTIFACT_GUARD_FAILED`; run `supaschema config validate`, repair the first error, run `supaschema doctor`, and retry. When a generated artifact is targeted, change declarative SQL or generator config, run `supaschema doctor`, then run `supaschema sync`; use `supaschema types` only when schema sources already match the intended state. Preserve unexplained generated drift, review the regenerated diff, and use `supaschema explain <CODE>` for the structured procedure.
+
+The bundle does not publish or register this repository's parser-backed secret, literal-DDL, or broad-deletion Bash guard. That narrow guard is maintainer tooling for developing Supaschema itself.
 
 `supaschema hook schema-write` triggers the default migration workflow after configured schema files are edited. It writes the migration when `workflow.schema_diff` is `"on_schema_write"` and runs the replay-safety check on those generated migration paths when `workflow.migration_check` is `"after_schema_diff"`. If `workflow.migration_sync` allows automatic sync, the hook first confirms exactly one selected `sync.targets` entry is `mode: "auto"`, its database URL reference resolves when its runner needs one, and any remote target has its configured approval variable set. Only then does it call `supaschema sync`, which owns the ordered source, diff, target-selection, history, check, generated-contract, schema-closure staging, source safety, runner, and reconciliation workflow.
 
-If config or approval does not permit automatic sync, the hook stays on the non-mutating diff/check lane. If `check` or `sync` fails, the hook emits continuation feedback so Claude or Codex investigates the root source, searches for correlated migration failures, fixes the canonical owner, and reruns the failing command.
+If config or approval does not permit automatic sync, the hook stays on the diff/check lane. If `check` or `sync` fails, the hook emits continuation feedback so Claude or Codex investigates the root source, searches for correlated migration failures, fixes the canonical owner, and reruns the failing command.
 
 ## Repo-local tooling
 

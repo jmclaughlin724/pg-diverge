@@ -1,7 +1,15 @@
 import { resolveConfig } from "../config/schema.js";
 import { lineageLine } from "../migrations/lineage.js";
 import { notNullProofConstraintName } from "../migrations/not-null.js";
+import { commentTarget } from "../sql/dependents.js";
 import { quoteIdent } from "../sql/identifiers.js";
+import { commentTargetSql } from "../sql/privileges.js";
+import {
+  defaultRlsState,
+  type RlsState,
+  renderRlsStateTransition,
+  rlsStateFromObjectMetadata,
+} from "../sql/rls.js";
 import type { TableColumn } from "../sql/table-shape.js";
 import type {
   Diagnostic,
@@ -396,8 +404,9 @@ function renderReplace(operation: MigrationOperation): string {
     case "type":
     case "domain":
     case "sequence":
-    case "rls":
       return `${renderDrop(before)}\n${renderCreate(after)}`;
+    case "rls":
+      return renderRlsTransition(before, after);
     case "schema":
     case "extension":
       return renderCreate(after);
@@ -446,6 +455,7 @@ function renderCreate(object: SchemaObject): string {
     case "trigger":
       return `${renderDrop(object)}\n${ensureSemicolon(object.sql)}`;
     case "rls":
+      return renderRlsTransition(undefined, object);
     case "default-privilege":
     case "comment":
       return ensureSemicolon(object.sql);
@@ -595,11 +605,17 @@ function renderDrop(object: SchemaObject): string {
     case "policy":
       return `DROP POLICY IF EXISTS ${quoteIdent(ref.name)} ON ${qualifiedTableRef(ref)};`;
     case "rls":
-      return `ALTER TABLE ${qualifiedTableRef(ref)} DISABLE ROW LEVEL SECURITY;`;
-    case "comment":
-      return typeof object.metadata.commentDropSql === "string"
-        ? ensureSemicolon(object.metadata.commentDropSql)
-        : `COMMENT ON ${String(object.metadata.descriptor ?? ref.name)} IS NULL;`;
+      return renderRlsTransition(object, undefined);
+    case "comment": {
+      if (typeof object.metadata.commentDropSql === "string") {
+        return ensureSemicolon(object.metadata.commentDropSql);
+      }
+      const target = commentTarget(object);
+      if (target === undefined) {
+        throw new Error(`comment object ${object.key} has no comment target`);
+      }
+      return `COMMENT ON ${commentTargetSql(target)} IS NULL;`;
+    }
     case "grant":
       return renderGrantDrop(object);
     case "default-privilege":
@@ -607,6 +623,36 @@ function renderDrop(object: SchemaObject): string {
     default:
       throw new Error(`unsupported drop operation for ${ref.kind}`);
   }
+}
+
+function renderRlsTransition(
+  before: SchemaObject | undefined,
+  after: SchemaObject | undefined
+): string {
+  const object = after ?? before;
+  if (!object) {
+    throw new Error("RLS transition has no state object");
+  }
+  const beforeState = before ? requiredRlsState(before) : defaultRlsState;
+  const afterState = after ? requiredRlsState(after) : defaultRlsState;
+  const sql = renderRlsStateTransition(
+    object.ref.schema,
+    object.ref.table ?? object.ref.name,
+    beforeState,
+    afterState
+  );
+  if (sql.length === 0) {
+    throw new Error(`RLS transition for ${object.key} has no state change`);
+  }
+  return ensureSemicolon(sql);
+}
+
+function requiredRlsState(object: SchemaObject): RlsState {
+  const state = rlsStateFromObjectMetadata(object.metadata);
+  if (!state) {
+    throw new Error(`RLS object ${object.key} has no canonical state`);
+  }
+  return state;
 }
 
 function columnFromMetadata(value: unknown): TableColumn {

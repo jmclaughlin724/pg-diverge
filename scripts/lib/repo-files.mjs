@@ -34,11 +34,9 @@ export const LOCAL_REPOSITORY_PREFIXES = [
   "corpus/",
   "benchmarks/",
   "bin/",
-  "cloudflare/",
   "services/",
   ".github/workflows/",
   ".claude/rules/",
-  ".claude/skills/code-atlas/",
   ".claude/skills/fastmcp/",
   ".claude/skills/optimizer/",
   ".claude/skills/supaschema/",
@@ -46,7 +44,6 @@ export const LOCAL_REPOSITORY_PREFIXES = [
   ".claude/hooks/",
   ".codex/rules/",
   ".codex/hooks/",
-  ".agents/skills/code-atlas/",
   ".agents/skills/fastmcp/",
   ".agents/skills/optimizer/",
   ".agents/skills/supaschema/",
@@ -67,17 +64,7 @@ export const REPOSITORY_DENY_SEGMENTS = new Set([
   "plans",
 ]);
 
-export const LOCAL_BIOME_PATHS = [
-  "scripts/code-atlas",
-  "scripts/stripe",
-  "services/license-worker",
-  "cloudflare",
-  ".claude/skills",
-  ".claude/settings.local.json",
-  ".mcp.json",
-  ".vscode",
-  "fastmcp.json",
-];
+export const LOCAL_BIOME_PATHS = [".claude/skills", ".claude/settings.local.json", ".vscode"];
 
 export function isRepositoryContextPath(file) {
   if (LOCAL_REPOSITORY_FILES.includes(file)) {

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import {
   checkFailureLoopReason,
   diffFailureLoopReason,
@@ -8,8 +9,10 @@ import {
 import { head, resolveHookBinary, runHookCommand } from "./commands.js";
 import { automaticSyncPlan, pathConfirmationMessage, readSchemaPathState } from "./config.js";
 import {
+  artifactTargetMatches,
   changedSchemaTargets,
-  generatedMigrationEditTargets,
+  generatedArtifactEditTargets,
+  generatedMigrationsIn,
   hookEditTargets,
   hookProjectDir,
   isGeneratedMigration,
@@ -149,21 +152,74 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
   return postToolUseHookOutput(additionalContext);
 }
 
-export function generatedMigrationEditHookOutput(
+export function generatedArtifactEditHookOutput(
   payload: unknown,
   runtime: "claude" | "codex"
 ): AgentHookOutput | undefined {
   const projectDir = hookProjectDir(payload);
-  const blocked = generatedMigrationEditTargets(payload, projectDir).find((path) =>
-    isGeneratedMigration(path)
+  const pathState = readSchemaPathState(projectDir);
+  const generatedMigrations = generatedMigrationsIn(
+    pathState.migrationsDir === undefined
+      ? undefined
+      : resolveProjectPath(projectDir, pathState.migrationsDir)
   );
+  const contractArtifacts = [
+    { kind: "generated TypeScript contract", path: pathState.typesFile },
+    { kind: "generated Zod contract", path: pathState.zodFile },
+  ];
+  let blocked:
+    | {
+        artifact: { kind: string; path: string };
+        target: { operation: "delete" | "write"; path: string };
+      }
+    | undefined;
+  for (const target of generatedArtifactEditTargets(payload, projectDir)) {
+    const contract = contractArtifacts.find((artifact) =>
+      artifactTargetMatches(target.path, artifact.path)
+    );
+    if (contract) {
+      blocked = { artifact: contract, target };
+      break;
+    }
+    if (target.operation === "delete" && target.reviewedMigrationDelete === true) {
+      continue;
+    }
+    const migration = isGeneratedMigration(target.path)
+      ? target.path
+      : generatedMigrations.find((path) => artifactTargetMatches(target.path, path));
+    if (migration) {
+      blocked = {
+        artifact: { kind: "Supaschema-generated migration", path: migration },
+        target,
+      };
+      break;
+    }
+  }
   if (blocked === undefined) {
     return runtime === "codex" ? {} : undefined;
   }
   const reason =
-    `${blocked} is a supaschema-generated migration (lineage marker present). ` +
-    "Do not hand-edit it: change the declarative schema tree, delete this file if it is stale, " +
-    "and regenerate with `supaschema diff`.";
+    `${blocked.artifact.path} is a ${blocked.artifact.kind}. ` +
+    "Do not hand-edit generated artifacts. Change the declarative schema or generator config, " +
+    "restore migration/source closure with `supaschema doctor`, then run `supaschema sync`; " +
+    "run `supaschema types` only when the schema sources already match the intended state. " +
+    "Review the generated diff and preserve unexplained drift. " +
+    "Run `supaschema explain SUPA_GENERATED_ARTIFACT_EDIT` for the complete recovery procedure.";
+  return generatedArtifactBlockOutput(reason, runtime);
+}
+
+export function generatedArtifactGuardFailureOutput(runtime: "claude" | "codex"): AgentHookOutput {
+  const reason =
+    "SUPA_GENERATED_ARTIFACT_GUARD_FAILED: generated-artifact protection could not classify this write. " +
+    "The write is denied. Run `supaschema config validate`, repair the config or hook payload, and retry. " +
+    "Do not bypass the hook or edit a generated artifact.";
+  return generatedArtifactBlockOutput(reason, runtime);
+}
+
+function generatedArtifactBlockOutput(
+  reason: string,
+  runtime: "claude" | "codex"
+): AgentHookOutput {
   if (runtime === "codex") {
     return {
       hookSpecificOutput: {
@@ -180,6 +236,10 @@ export function generatedMigrationEditHookOutput(
     },
     reason: `${reason} See .claude/rules/supaschema.md.`,
   };
+}
+
+function resolveProjectPath(projectDir: string, path: string): string {
+  return resolve(projectDir, path);
 }
 
 function postToolUseHookOutput(

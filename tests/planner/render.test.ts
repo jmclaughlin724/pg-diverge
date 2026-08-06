@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderGrantCreate, renderGrantDrop } from "../../src/render/guards.js";
 import { renderMigration } from "../../src/render/migration.js";
+import { commentTarget } from "../../src/sql/dependents.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
+import { buildCommentObject, buildGrantObject } from "../../src/sql/privileges.js";
 import type { SchemaModel } from "../../src/types.js";
 import { hasUnqualifiedCatalogName } from "../catalog/qualification.js";
 
@@ -123,6 +125,26 @@ describe("privilege rendering", () => {
     );
   });
 
+  it("revokes merged column-level grant options explicitly", () => {
+    const object = buildGrantObject({
+      grantOptionColumnPrivileges: { SELECT: ["id"] },
+      grantOptionPrivileges: ["SELECT"],
+      grantee: "authenticated",
+      kindPhrase: "TABLE",
+      ordinal: 0,
+      privileges: ["SELECT"],
+      schema: "app",
+      targetIdentity: "app.accounts",
+      targetRendered: '"app"."accounts"',
+      verb: "GRANT",
+    });
+
+    expect(renderGrantDrop(object)).toBe(
+      'REVOKE SELECT ON TABLE "app"."accounts" FROM "authenticated";\n' +
+        'REVOKE SELECT ("id") ON TABLE "app"."accounts" FROM "authenticated";'
+    );
+  });
+
   it("revokes removed PUBLIC ALL grants on objects without PUBLIC defaults", async () => {
     const source = [
       "CREATE SCHEMA app;",
@@ -139,5 +161,52 @@ describe("privilege rendering", () => {
     expect(grant && renderGrantDrop(grant)).toBe(
       'REVOKE ALL ON TABLE "app"."accounts" FROM PUBLIC;'
     );
+  });
+});
+
+describe("comment rendering", () => {
+  it("renders a quoted drop for a rebound comment target without drop facts", async () => {
+    const spliceConfig = { normalize: "off" };
+    const extractTable = (description: string) =>
+      extractObjectsFromSql(
+        `CREATE SCHEMA app;\nCREATE TABLE app."Purchase Order" (id integer);\nCOMMENT ON TABLE app."Purchase Order" IS '${description}';`,
+        { config: spliceConfig }
+      );
+    const fromExtracted = await extractTable("directory");
+    const toExtracted = await extractTable("updated");
+    const fromObjects = fromExtracted.objects.map((object) => {
+      if (object.ref.kind !== "comment") {
+        return object;
+      }
+      const target = commentTarget(object);
+      if (target === undefined) {
+        throw new Error("expected a comment target");
+      }
+      return buildCommentObject({
+        description: "directory",
+        ordinal: object.ordinal,
+        sql: object.sql,
+        target,
+      });
+    });
+    const from: SchemaModel = {
+      diagnostics: [],
+      fingerprint: "from",
+      objects: fromObjects,
+      source: "test:from",
+    };
+    const to: SchemaModel = {
+      diagnostics: [],
+      fingerprint: "to",
+      objects: toExtracted.objects,
+      source: "test:to",
+    };
+    const sql = renderMigration(planSchemaDiff(from, to, { config: spliceConfig }), {
+      includeHeader: false,
+    });
+
+    expect(sql).toContain('COMMENT ON TABLE "app"."Purchase Order" IS NULL;');
+    expect(sql).toContain("COMMENT ON TABLE app.\"Purchase Order\" IS 'updated';");
+    expect(sql).not.toContain("app.Purchase Order");
   });
 });

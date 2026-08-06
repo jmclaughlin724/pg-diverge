@@ -1,4 +1,10 @@
-import type { ObjectKind, ObjectRef, SchemaObject } from "../types.js";
+import type {
+  CommentTarget,
+  CommentTargetKind,
+  ObjectKind,
+  ObjectRef,
+  SchemaObject,
+} from "../types.js";
 
 const grantableKinds = new Set<ObjectKind>([
   "domain",
@@ -20,6 +26,48 @@ export const relationOwnerKinds = new Set<ObjectKind>([
   "foreign-table",
   "materialized-view",
   "table",
+  "view",
+]);
+
+const relationCommentKinds = new Map<ObjectKind, CommentTarget["kind"]>([
+  ["foreign-table", "foreign-table"],
+  ["materialized-view", "materialized-view"],
+  ["table", "table"],
+  ["view", "view"],
+]);
+
+const directCommentKinds = new Map<ObjectKind, CommentTarget["kind"]>([
+  ["domain", "domain"],
+  ["enum", "type"],
+  ["extension", "extension"],
+  ["index", "index"],
+  ["schema", "schema"],
+  ["sequence", "sequence"],
+  ["type", "type"],
+]);
+
+const tableScopedCommentKinds = new Map<ObjectKind, CommentTarget["kind"]>([
+  ["constraint", "constraint"],
+  ["policy", "policy"],
+  ["trigger", "trigger"],
+]);
+
+const commentTargetKinds: ReadonlySet<string> = new Set([
+  "column",
+  "constraint",
+  "domain",
+  "extension",
+  "foreign-table",
+  "function",
+  "index",
+  "materialized-view",
+  "policy",
+  "procedure",
+  "schema",
+  "sequence",
+  "table",
+  "trigger",
+  "type",
   "view",
 ]);
 
@@ -48,61 +96,92 @@ export function isGrantForTargets(
 }
 
 export function isCommentForRefs(object: SchemaObject, refs: Iterable<ObjectRef>): boolean {
-  if (object.ref.kind !== "comment" || typeof object.metadata.descriptor !== "string") {
+  const target = commentTarget(object);
+  if (object.ref.kind !== "comment" || !target) {
     return false;
   }
-  const { descriptor } = object.metadata;
   for (const ref of refs) {
-    if (commentTargetsRef(descriptor, ref)) {
+    if (commentTargetsRef(target, ref)) {
       return true;
     }
   }
   return false;
 }
 
-function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
-  const schema = ref.schema ?? "public";
-  const identity = `${schema}.${ref.name}`;
-  switch (ref.kind) {
-    case "table":
-      return descriptor === `table ${identity}` || descriptor.startsWith(`column ${identity}.`);
-    case "foreign-table":
-      return (
-        descriptor === `foreign table ${identity}` || descriptor.startsWith(`column ${identity}.`)
-      );
-    case "view":
-      return descriptor === `view ${identity}` || descriptor.startsWith(`column ${identity}.`);
-    case "materialized-view":
-      return (
-        descriptor === `materialized view ${identity}` ||
-        descriptor.startsWith(`column ${identity}.`)
-      );
-    case "constraint":
-      return descriptor === `constraint ${tableRefIdentity(ref)}.${ref.name}`;
-    case "index":
-      return descriptor === `index ${identity}`;
-    case "schema":
-      return descriptor === `schema ${ref.name}`;
-    case "extension":
-      return descriptor === `extension ${ref.name}`;
-    case "sequence":
-      return descriptor === `sequence ${identity}`;
-    case "function":
-      return descriptor === `function ${identity}(${ref.signature ?? ""})`;
-    case "procedure":
-      return descriptor === `procedure ${identity}(${ref.signature ?? ""})`;
-    case "enum":
-    case "type":
-      return descriptor === `type ${identity}`;
-    case "domain":
-      return descriptor === `domain ${identity}`;
-    case "policy":
-      return descriptor === `policy ${tableRefIdentity(ref)}.${ref.name}`;
-    case "trigger":
-      return descriptor === `trigger ${tableRefIdentity(ref)}.${ref.name}`;
-    default:
-      return false;
+function commentTargetsRef(target: CommentTarget, ref: ObjectRef): boolean {
+  if (
+    ref.kind !== "schema" &&
+    ref.kind !== "extension" &&
+    (target.schema ?? "public") !== (ref.schema ?? "public")
+  ) {
+    return false;
   }
+  const relationKind = relationCommentKinds.get(ref.kind);
+  if (relationKind) {
+    return (
+      (target.kind === relationKind && target.name === ref.name) ||
+      (target.kind === "column" && target.table === ref.name)
+    );
+  }
+  const directKind = directCommentKinds.get(ref.kind);
+  if (directKind) {
+    return target.kind === directKind && target.name === ref.name;
+  }
+  if (ref.kind === "function" || ref.kind === "procedure") {
+    return routineCommentTargetsRef(target, ref);
+  }
+  const tableScopedKind = tableScopedCommentKinds.get(ref.kind);
+  if (tableScopedKind) {
+    return (
+      target.kind === tableScopedKind && target.table === ref.table && target.name === ref.name
+    );
+  }
+  return false;
+}
+
+function routineCommentTargetsRef(target: CommentTarget, ref: ObjectRef): boolean {
+  return (
+    target.kind === ref.kind &&
+    target.name === ref.name &&
+    (target.signature ?? "") === (ref.signature ?? "")
+  );
+}
+
+export function commentTarget(object: SchemaObject): CommentTarget | undefined {
+  const value = object.metadata.commentTarget;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return;
+  }
+  const kind = Reflect.get(value, "kind");
+  const name = Reflect.get(value, "name");
+  const schema = optionalStringProperty(value, "schema");
+  const signature = optionalStringProperty(value, "signature");
+  const table = optionalStringProperty(value, "table");
+  if (
+    !isCommentTargetKind(kind) ||
+    typeof name !== "string" ||
+    schema === null ||
+    signature === null ||
+    table === null
+  ) {
+    return;
+  }
+  return {
+    kind,
+    name,
+    ...(schema === undefined ? {} : { schema }),
+    ...(signature === undefined ? {} : { signature }),
+    ...(table === undefined ? {} : { table }),
+  };
+}
+
+function isCommentTargetKind(value: unknown): value is CommentTargetKind {
+  return typeof value === "string" && commentTargetKinds.has(value);
+}
+
+function optionalStringProperty(value: object, key: string): string | null | undefined {
+  const property = Reflect.get(value, key);
+  return property === undefined || typeof property === "string" ? property : null;
 }
 
 export function refIdentity(ref: ObjectRef): string {
@@ -114,4 +193,21 @@ export function refIdentity(ref: ObjectRef): string {
 
 export function tableRefIdentity(ref: ObjectRef): string | undefined {
   return ref.table ? `${ref.schema ?? "public"}.${ref.table}` : undefined;
+}
+
+export function objectSchema(object: SchemaObject): string {
+  if (object.ref.kind === "schema") {
+    return object.ref.name;
+  }
+  const target = commentTarget(object);
+  if (target?.kind === "schema") {
+    return target.name;
+  }
+  if (
+    (object.ref.kind === "extension" || target?.kind === "extension") &&
+    typeof object.metadata.schema === "string"
+  ) {
+    return object.metadata.schema;
+  }
+  return object.ref.schema ?? "public";
 }

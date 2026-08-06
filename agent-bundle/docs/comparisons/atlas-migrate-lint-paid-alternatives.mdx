@@ -18,19 +18,17 @@ If you relied on `atlas migrate lint` for free migration-safety checks, that com
 
 Starting with Atlas v0.38, the `atlas migrate lint` command is available only to Atlas Pro users, and the custom schema-policy linting rules are Pro-only as well. Atlas's current pricing pages describe separate CLI seat, pipeline project, and target-database pricing. Confirm the current pricing page before quoting a number.
 
-<Info>
-  Last verified 2026-06-18 against the Atlas documentation. Pricing and feature
-  gating are set by Atlas and can change; confirm the current terms on the Atlas
-  site before quoting them.
-</Info>
+:::info
+Last verified 2026-06-18 against the Atlas documentation. Pricing and feature gating are set by Atlas and can change; confirm the current terms on the Atlas site before quoting them.
+:::
 
 ## Free alternatives at a glance
 
-| Tool | License | Migration-safety scope | Needs a database or Docker? |
-| --- | --- | --- | --- |
-| `supaschema` | Open source (MIT) | Replay-safety + lock-hazard checks on generated migrations (`check`), a destructive-operation advisory in `diff`, and a `scan` score with RLS-audit and least-privilege packs | No, generation and checks run from declarative SQL files |
-| Squawk | Open source (MIT/Apache-2.0) | Lock-safety linter for Postgres migration SQL | No |
-| pgfence | Source-available | Migration-safety CLI: lock-mode analysis, risk scoring, and safe-rewrite recipes | No |
+| Tool         | License                      | Migration-safety scope                                                                                                                                                        | Needs a database or Docker?                              |
+| ------------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `supaschema` | Open source (MIT)            | Replay-safety + lock-hazard checks on generated migrations (`check`), a destructive-operation advisory in `diff`, and a `scan` score with RLS-audit and least-privilege packs | No, generation and checks run from declarative SQL files |
+| Squawk       | Open source (MIT/Apache-2.0) | Lock-safety linter for Postgres migration SQL                                                                                                                                 | No                                                       |
+| pgfence      | Source-available             | Migration-safety CLI: lock-mode analysis, risk scoring, and safe-rewrite recipes                                                                                              | No                                                       |
 
 Each tool is Postgres-native. None requires an Atlas Pro seat to run its free checks.
 
@@ -63,7 +61,7 @@ Destructive changes fail closed until you add the exact object key to `hints.des
 <CardGroup cols={2}>
   <Card
     title="Supabase CLI comparison"
-    icon="layer-group"
+    icon="layers"
     href="/comparisons/supaschema-vs-supabase-cli"
   >
     How supaschema's declarative diff compares to the Supabase CLI db diff

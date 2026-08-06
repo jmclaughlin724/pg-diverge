@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -848,6 +848,23 @@ describe("verify environment flags", () => {
 });
 
 describe("doctor environment resolution", () => {
+  it("reports a discovered supaschema.config.json path", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-doctor-config-"));
+    const configPath = join(cwd, "supaschema.config.json");
+    writeFileSync(configPath, "{}\n");
+
+    const result = spawnSync(process.execPath, [cliPath, "doctor"], {
+      cwd,
+      encoding: "utf8",
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([name]) => name !== "SUPASCHEMA_DATABASE_URL")
+      ),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`config: ${realpathSync(configPath)}`);
+  });
+
   it("honors the global --env database URL lane", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-doctor-env-"));
     writeFileSync(
@@ -866,6 +883,39 @@ describe("doctor environment resolution", () => {
 
     expect(result.status).toBe(2);
     expect(result.stdout).toContain("database url: resolved via --env staging");
+  });
+});
+
+describe("diagnostic explanations", () => {
+  it("renders structured recovery as text and JSON", () => {
+    const text = spawnSync(process.execPath, [cliPath, "explain", "SUPA_GENERATED_ARTIFACT_EDIT"], {
+      encoding: "utf8",
+    });
+    const json = spawnSync(
+      process.execPath,
+      [cliPath, "explain", "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED", "--json"],
+      { encoding: "utf8" }
+    );
+
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain("Recovery:");
+    expect(text.stdout).toContain("Do not:");
+    expect(text.stdout).toContain("supaschema sync");
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      code: "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED",
+      recoverySteps: expect.any(Array),
+      forbiddenActions: expect.any(Array),
+    });
+  });
+
+  it("does not retain the retired generated-migration hook alias", () => {
+    const result = spawnSync(process.execPath, [cliPath, "hook", "generated-migration-edit"], {
+      encoding: "utf8",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("unknown command");
   });
 });
 

@@ -10,14 +10,12 @@
 # pre-commit is piped (lefthook: run jobs sequentially, stop when one fails;
 # no stdio is chained between jobs) so the sync job observes the formatters'
 # output and is skipped when formatting fails. The formatters reflow .claude/**
-# sources and re-stage them via stage_fixed; generated mirrors staged before
-# that reflow would otherwise keep pre-format bytes and fail
-# check-agent-surface-parity in CI while the working tree looked correct.
+# sources and re-stage them via stage_fixed; the trailing writer refreshes and
+# stages generated mirrors from those final canonical bytes.
 #
 # The sync job refuses to run while generator input sources carry unstaged
 # edits or untracked files: regenerating from the working tree would stage
-# mirrors whose canonical sources are not in the commit, recreating the same
-# CI-only parity failure in the opposite direction. It then stages only
+# mirrors whose canonical sources are not in the commit. It then stages only
 # generator-owned output trees; self-sourced inputs (agent-bundle/INSTALL.md,
 # skills/README.md, .agents/prompts) are never staged by the hook.
 
@@ -29,7 +27,7 @@ pre-commit:
       run: npm run format -- --staged
       stage_fixed: true
     - name: prettier
-      glob: "*.{md,mdx,yml,yaml}"
+      glob: "*.{astro,md,mdx,yml,yaml}"
       run: npx --no-install prettier --write {staged_files}
       stage_fixed: true
     - name: taplo
@@ -40,21 +38,6 @@ pre-commit:
       glob: "*.sh"
       run: npm run format:sh -- {staged_files}
       stage_fixed: true
-    - name: sync-agent-surfaces
-      run: |
-        set -e
-        if ! git diff --quiet -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md; then
-          echo "sync-agent-surfaces: unstaged edits exist under agent-surface source paths (.claude, docs, scripts/skills, .agents/prompts, agent-bundle/INSTALL.md, skills/README.md, CLAUDE.md)." >&2
-          echo "Stage or revert those edits first so regenerated mirrors match the canonical sources in this commit." >&2
-          exit 1
-        fi
-        if [ -n "$(git ls-files --others --exclude-standard -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md)" ]; then
-          echo "sync-agent-surfaces: untracked files exist under agent-surface source paths (.claude, docs, scripts/skills, .agents/prompts, agent-bundle/INSTALL.md, skills/README.md, CLAUDE.md)." >&2
-          echo "Stage or remove those files first so regenerated mirrors match the canonical sources in this commit." >&2
-          exit 1
-        fi
-        npm run sync:llm
-        git add .agents/skills .codex skills/supaschema agent-bundle/agents agent-bundle/claude agent-bundle/codex agent-bundle/docs agent-bundle/skills-manifest.json
 
 pre-push:
   parallel: false

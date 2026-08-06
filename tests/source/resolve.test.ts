@@ -1,17 +1,21 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../../src/config/schema.js";
 import { resolveGenerationSourceDefaults } from "../../src/planner/context.js";
 import {
   defaultTreeSource,
+  extractGenerationSourceModel,
   resolveMigrationsDir,
   resolveSourceDefaults,
 } from "../../src/source/resolve.js";
 import { verifyMigration } from "../../src/verify/migration.js";
 
 const config = resolveConfig();
+const execFileAsync = promisify(execFile);
 
 describe("generation source defaults", () => {
   it("passes explicit sources through without a notice", async () => {
@@ -58,7 +62,19 @@ describe("generation source defaults", () => {
     expect(resolved.notice).toContain("--from git:HEAD");
   });
 
-  it("blocks auto with existing migrations and no repository baseline", async () => {
+  it("checks Git HEAD in the requested repository directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
+    let checkedCwd: string | undefined;
+
+    await resolveGenerationSourceDefaults({ cwd: root }, config, (cwd) => {
+      checkedCwd = cwd;
+      return Promise.resolve(false);
+    });
+
+    expect(checkedCwd).toBe(root);
+  });
+
+  it("replays existing migrations when auto has no repository baseline", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
     await mkdir(join(root, "migrations"), { recursive: true });
     await writeFile(join(root, "migrations", "20260101000000_existing.sql"), "select 1;");
@@ -70,11 +86,25 @@ describe("generation source defaults", () => {
       async () => false
     );
 
-    expect(resolved.from).toBe("empty:");
-    expect(resolved.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_SOURCE_BASELINE_REQUIRED"
+    expect(resolved.from).toBe("migrations:migrations");
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.notice).toContain("--from migrations:migrations");
+  });
+
+  it("prefers migration replay over git HEAD for a hand-authored tail", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
+    await mkdir(join(root, "migrations"), { recursive: true });
+    await writeFile(
+      join(root, "migrations", "20260101000000_generated.sql"),
+      "-- supaschema: lineage format=5 from=before to=after\nSELECT 1;\n"
     );
-    expect(resolved.notice).not.toContain("--from empty:");
+    await writeFile(join(root, "migrations", "20260102000000_manual.sql"), "CREATE SCHEMA app;\n");
+    const custom = resolveConfig({ migrationsDir: "migrations" });
+
+    const resolved = await resolveGenerationSourceDefaults({ cwd: root }, custom, async () => true);
+
+    expect(resolved.from).toBe("migrations:migrations");
+    expect(resolved.diagnostics).toEqual([]);
   });
 
   it("falls back to empty: for a first migration with no git HEAD", async () => {
@@ -148,6 +178,72 @@ describe("generation source defaults", () => {
     expect(() =>
       resolveConfig({ sources: { from: "empty:", to: "migrations:supabase/migrations" } })
     ).toThrow();
+  });
+});
+
+describe("generation source model reuse", () => {
+  it("extracts a git revision once across the prove and plan phases", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-memo-"));
+    await mkdir(join(root, "schemas"), { recursive: true });
+    await writeFile(
+      join(root, "schemas", "app.sql"),
+      "CREATE TABLE public.accounts (id bigint);\n"
+    );
+    await execFileAsync("git", ["init", "-q", "."], { cwd: root });
+    await execFileAsync("git", ["config", "user.email", "test@example.test"], { cwd: root });
+    await execFileAsync("git", ["config", "user.name", "test"], { cwd: root });
+    await execFileAsync("git", ["add", "-A"], { cwd: root });
+    await execFileAsync("git", ["commit", "-qm", "schema"], { cwd: root });
+    const custom = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+
+    const proved = await extractGenerationSourceModel("git:HEAD", { config: custom, cwd: root });
+    const planned = await extractGenerationSourceModel("git:HEAD", { config: custom, cwd: root });
+
+    expect(planned).toBe(proved);
+    expect(planned.objects.length).toBeGreaterThan(0);
+  });
+
+  it("does not reuse models across differing extraction inputs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-memo-scope-"));
+    await mkdir(join(root, "schemas"), { recursive: true });
+    await writeFile(
+      join(root, "schemas", "app.sql"),
+      "CREATE TABLE public.accounts (id bigint);\n"
+    );
+    await execFileAsync("git", ["init", "-q", "."], { cwd: root });
+    await execFileAsync("git", ["config", "user.email", "test@example.test"], { cwd: root });
+    await execFileAsync("git", ["config", "user.name", "test"], { cwd: root });
+    await execFileAsync("git", ["add", "-A"], { cwd: root });
+    await execFileAsync("git", ["commit", "-qm", "schema"], { cwd: root });
+    const custom = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+    const unnormalized = resolveConfig({
+      migrationsDir: "migrations",
+      normalize: "off",
+      schemaPaths: ["schemas"],
+    });
+
+    const first = await extractGenerationSourceModel("git:HEAD", { config: custom, cwd: root });
+    const second = await extractGenerationSourceModel("git:HEAD", {
+      config: unnormalized,
+      cwd: root,
+    });
+
+    expect(second).not.toBe(first);
+  });
+
+  it("never memoizes live database or catalog sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-live-"));
+    const dump = join(root, "baseline.sql");
+    await writeFile(dump, "CREATE TABLE public.accounts (id bigint);\n");
+    const custom = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+
+    const first = await extractGenerationSourceModel(`dump:${dump}`, { config: custom, cwd: root });
+    const second = await extractGenerationSourceModel(`dump:${dump}`, {
+      config: custom,
+      cwd: root,
+    });
+
+    expect(second).not.toBe(first);
   });
 });
 

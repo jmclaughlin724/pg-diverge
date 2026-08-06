@@ -1,0 +1,58 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "cloudflare-api-token",
+      "description": "Cloudflare API token",
+      "password": true
+    }
+  ],
+  "mcpServers": {
+    "cloudflare-api": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:cloudflare-api-token}"
+      }
+    },
+    "cloudflare-docs": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "supaschema": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--package",
+        "supaschema-agent-mcp",
+        "fastmcp",
+        "run",
+        "fastmcp.json",
+        "--skip-env"
+      ]
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "openaiDeveloperDocs": {
+      "type": "http",
+      "url": "https://developers.openai.com/mcp"
+    },
+    "stripe": {
+      "url": "https://mcp.stripe.com"
+    },
+    "ultracite": {
+      "type": "http",
+      "url": "https://gitmcp.io/haydenbleasel/ultracite"
+    },
+    "zod": {
+      "type": "http",
+      "url": "https://mcp.inkeep.com/zod/mcp"
+    },
+    "supaschema-docs": {
+      "type": "http",
+      "url": "https://supaschema.com/docs/mcp"
+    }
+  }
+}

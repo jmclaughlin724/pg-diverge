@@ -12,15 +12,15 @@ Use `supaschema` when the schema files are the source of truth and you need a fa
 
 ## Comparison
 
-| Capability | supaschema | Supabase CLI db diff |
-| --- | --- | --- |
-| Migration generation source | Declarative SQL files, git refs, dumps, catalogs, or read-only database catalogs | Declarative SQL files, migrations, or local, linked, and URL-selected database targets |
-| Docker or shadow database for generation | Not required | Documented declarative and local workflows use a shadow database; explicit target modes vary |
-| Type generation before apply | Yes, from schema files with `supaschema types` | Generated from the current local, linked/project, or URL-selected database schema |
-| Replay safety | Generated SQL is guarded and checked | Generated SQL may need manual review for retry safety |
-| RLS policy body changes | Policy expressions are compared structurally | Engines can miss policy-body changes when names stay stable |
-| Destructive change handling | Fails closed until exact hints are approved | Depends on generated output and reviewer discipline |
-| Applies to production | Yes, through configured apply targets and runner approval gates | Yes, via Supabase migration commands |
+| Capability                               | supaschema                                                                       | Supabase CLI db diff                                                                         |
+| ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Migration generation source              | Declarative SQL files, git refs, dumps, catalogs, or read-only database catalogs | Declarative SQL files, migrations, or local, linked, and URL-selected database targets       |
+| Docker or shadow database for generation | Not required                                                                     | Documented declarative and local workflows use a shadow database; explicit target modes vary |
+| Type generation before apply             | Yes, from schema files with `supaschema types`                                   | Generated from the current local, linked/project, or URL-selected database schema            |
+| Replay safety                            | Generated SQL is guarded and checked                                             | Generated SQL may need manual review for retry safety                                        |
+| RLS policy body changes                  | Policy expressions are compared structurally                                     | Engines can miss policy-body changes when names stay stable                                  |
+| Destructive change handling              | Fails closed until exact hints are approved                                      | Depends on generated output and reviewer discipline                                          |
+| Applies to production                    | Yes, through configured apply targets and runner approval gates                  | Yes, via Supabase migration commands                                                         |
 
 ## Why the workflow is different
 
@@ -51,13 +51,9 @@ The 2026-07-21 repository benchmark run compares supaschema 0.4.3 with all five 
 
 See [benchmarks](/benchmarks) for latency, accuracy, and replay-safety charts, and see the [anilize case study](/case-study-anilize) for a production Supabase schema with thousands of objects.
 
-<Info>
-  Last verified 2026-07-21 against the Supabase CLI documentation and CLI
-  2.109.1. `db diff` supports declarative SQL files plus explicit database
-  targets; the documented declarative and local workflows use a shadow database.
-  Supabase CLI behavior is set by Supabase and can change, so confirm current
-  command semantics before relying on it.
-</Info>
+:::info
+Last verified 2026-07-21 against the Supabase CLI documentation and CLI 2.109.1. `db diff` supports declarative SQL files plus explicit database targets; the documented declarative and local workflows use a shadow database. Supabase CLI behavior is set by Supabase and can change, so confirm current command semantics before relying on it.
+:::
 
 ## When to use each tool
 

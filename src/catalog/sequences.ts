@@ -1,7 +1,7 @@
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
 import type { SchemaObject } from "../types.js";
-import { type CatalogQuery, managedSchemaFilter, notExtensionMember, text } from "./query.js";
+import { type CatalogQuery, catalogSchemaFilter, notExtensionMember, text } from "./query.js";
 
 const sequenceTypeMax = new Map([
   ["bigint", "9223372036854775807"],
@@ -30,7 +30,7 @@ export async function collectSequences(pool: CatalogQuery): Promise<SchemaObject
     left join pg_namespace dn on dn.oid = dc.relnamespace
     left join pg_attribute a on a.attrelid = d.refobjid and a.attnum = d.refobjsubid
     where c.relkind = 'S'
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
       and ${notExtensionMember("dc", "pg_class")}
       and not exists (

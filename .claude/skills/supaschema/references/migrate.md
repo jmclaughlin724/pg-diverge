@@ -40,13 +40,13 @@ supaschema fingerprint --from <source>
 supaschema diff
 ```
 
-Zero-source-flag defaults use `sources.from` and `dir:<schemaPaths[0]>`, printed to stderr. For generation, `sources.from: "auto"` resolves a staged migration/schema closure to `git:INDEX` when its lineage fingerprint matches the index, then valid `git:HEAD`, then `empty:` only for a first migration with no existing corpus.
+Zero-source-flag defaults use `sources.from` and `dir:<schemaPaths[0]>`, printed to stderr. For generation, `sources.from: "auto"` resolves a staged migration/schema closure to `git:INDEX` when its lineage fingerprint matches the index, selects `migrations:<migrationsDir>` for first-lineage adoption or a hand-authored tail, tries `git:HEAD` only for contiguous lineage, and uses `empty:` only for a first migration with no corpus.
 
 The file lands in `migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` only when the human wants a specific file name. The write is no-clobber and chain-gated; named or file-output empty plans fail with `SUPA_DIFF_EMPTY_PLAN`.
 
 Use explicit `--from` / `--to` only when the requested workflow intentionally overrides config.
 
-**Migration-first adoption:** `--from migrations:<migrationsDir>` replays the matching corpus fail-closed. A different directory produces `SUPA_MIGRATION_BASELINE_UNSUPPORTED`; using replay as `--to` produces `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED`. Existing migrations with neither baseline produce `SUPA_SOURCE_BASELINE_REQUIRED`.
+**Migration-first adoption:** `--from migrations:<migrationsDir>` replays the matching corpus fail-closed. `sources.from: "auto"` selects that lane when generated lineage is absent or a hand-authored tail follows the newest lineage edge. A different directory produces `SUPA_MIGRATION_BASELINE_UNSUPPORTED`; using replay as `--to` produces `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED`; a replay defect produces `SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED` after the first file-specific diagnostic. Fix the historical source/model owner instead of patching generated contracts or choosing an unrelated fallback baseline.
 
 If `diff` exits 2, decode the code in [diagnostics.md](diagnostics.md) and fix the named canonical source. Do not bypass the gate.
 

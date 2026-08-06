@@ -1,0 +1,66 @@
+name: Python
+
+on:
+  pull_request:
+    paths:
+      - "services/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  python:
+    # Single un-matrixed Ubuntu lane for the FastMCP side-service: lock
+    # freshness, ruff lint+format, mypy types, pytest, and a pip-audit scan.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          prune-cache: true
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Lock freshness (fails on uv.lock drift)
+        run: uv sync --locked
+      # These mirror the canonical `py:*` npm scripts in package.json. The
+      # `--package supaschema-agent-mcp` flag is required: the workspace root
+      # has no runtime deps (dependencies = [], package = false) and does not
+      # depend on the member, so a bare `uv run` resolves in the root env that
+      # lacks fastmcp/mcp/pydantic. Ruff resolves no imports so it would pass
+      # either way, but mypy and pytest need the member env; keep all four
+      # aligned so the lane can't silently drift from the npm contract.
+      - name: Ruff lint
+        run: uv run --package supaschema-agent-mcp ruff check services/agent-mcp
+      - name: Ruff format check
+        run: uv run --package supaschema-agent-mcp ruff format --check services/agent-mcp
+      - name: Mypy type check
+        run: uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp
+      - name: Pytest
+        run: uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests
+      # Audit the SYNCED workspace member env (fastmcp/pydantic + transitives),
+      # not an ephemeral env: bare `uvx pip-audit` runs in an isolated tool env
+      # that contains only pip-audit, so it never scans the project's locked
+      # deps. `--with pip-audit` inside the member env audits what is actually
+      # installed/locked. The local first-party package (not on PyPI) is skipped.
+      - name: pip-audit (vuln scan)
+        run: uv run --package supaschema-agent-mcp --with pip-audit pip-audit

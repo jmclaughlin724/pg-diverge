@@ -19,15 +19,15 @@ Use Squawk when you hand-write migration SQL and want a free lock-safety linter 
 
 ## Comparison
 
-| Capability | supaschema | Squawk |
-| --- | --- | --- |
-| Generates migrations | Yes, from declarative SQL | No, lints SQL you provide |
-| Lock-safety analysis | Yes (`supaschema check`) | Yes |
-| Replay-safety guards (IF EXISTS, ON CONFLICT) | Yes | Partial, focused on lock and breaking-change rules |
-| RLS policy body changes | Compared structurally | Not its focus |
-| Generated types | TypeScript and Zod from the SQL tree | None |
-| License | Open source (MIT) | Open source (MIT / Apache-2.0) |
-| Database or Docker required | No | No |
+| Capability                                    | supaschema                           | Squawk                                             |
+| --------------------------------------------- | ------------------------------------ | -------------------------------------------------- |
+| Generates migrations                          | Yes, from declarative SQL            | No, lints SQL you provide                          |
+| Lock-safety analysis                          | Yes (`supaschema check`)             | Yes                                                |
+| Replay-safety guards (IF EXISTS, ON CONFLICT) | Yes                                  | Partial, focused on lock and breaking-change rules |
+| RLS policy body changes                       | Compared structurally                | Not its focus                                      |
+| Generated types                               | TypeScript and Zod from the SQL tree | None                                               |
+| License                                       | Open source (MIT)                    | Open source (MIT / Apache-2.0)                     |
+| Database or Docker required                   | No                                   | No                                                 |
 
 ## Why the workflow differs
 
@@ -37,15 +37,14 @@ Squawk is a focused static linter: you point it at migration SQL and it flags da
 
 The two are not mutually exclusive: if you already trust Squawk's lint rules, you can keep running it over the SQL `supaschema diff` renders.
 
-<Info>
-  Last verified 2026-06-18 against the Squawk documentation and GitHub
-  repository. Confirm current behavior and licensing before relying on it.
-</Info>
+:::info
+Last verified 2026-06-18 against the Squawk documentation and GitHub repository. Confirm current behavior and licensing before relying on it.
+:::
 
 <CardGroup cols={2}>
   <Card
     title="Atlas lint is paid: free alternatives"
-    icon="scale-balanced"
+    icon="scale"
     href="/comparisons/atlas-migrate-lint-paid-alternatives"
   >
     Free Postgres migration-safety options, including Squawk and supaschema.

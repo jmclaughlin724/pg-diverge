@@ -1,0 +1,18 @@
+name = "supaschema-docs"
+main = "docs/dist/server/entry.mjs"
+compatibility_date = "2026-04-15"
+workers_dev = false
+preview_urls = false
+no_bundle = true
+
+routes = [
+  { pattern = "supaschema.com", custom_domain = true },
+  { pattern = "www.supaschema.com", custom_domain = true },
+]
+
+[assets]
+binding = "ASSETS"
+directory = "docs/dist/client"
+
+[observability]
+enabled = true

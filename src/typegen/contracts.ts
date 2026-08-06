@@ -1,5 +1,6 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve } from "node:path";
+import { type BuildInfo, readBuildInfo } from "../build-info.js";
 import { hasErrors } from "../diagnostics/diagnostics.js";
 import { extractSourceModel } from "../source/extract.js";
 import { defaultTreeSource } from "../source/resolve.js";
@@ -9,6 +10,7 @@ import { collectSchemaShapes } from "./model.js";
 import { generateZodSchemas } from "./zod.js";
 
 interface GeneratedContractsOptions {
+  check?: boolean;
   config: SupaschemaConfig;
   honorWorkflowPolicy?: boolean;
   out?: string;
@@ -16,6 +18,7 @@ interface GeneratedContractsOptions {
 }
 
 interface GeneratedContractsResult {
+  checked: string[];
   diagnostics: Diagnostic[];
   skipped: string[];
   stdout?: string;
@@ -25,6 +28,7 @@ interface GeneratedContractsResult {
 export async function generateTypeContracts(
   options: GeneratedContractsOptions
 ): Promise<GeneratedContractsResult> {
+  const check = options.check === true;
   const source = options.source ?? defaultTreeSource(options.config);
   const target = options.out ?? options.config.typesFile;
   const typesPath = target === "stdout" ? "stdout" : resolve(process.cwd(), target);
@@ -33,12 +37,13 @@ export async function generateTypeContracts(
   const zodPolicy = options.config.workflow.zod_generation;
   const writeTypes =
     target !== "stdout" &&
-    (await shouldWriteGeneratedOutput(typesPath, typesPolicy, options.honorWorkflowPolicy));
+    (await shouldWriteGeneratedOutput(typesPath, typesPolicy, options.honorWorkflowPolicy, check));
   const writeZod =
     target !== "stdout" &&
-    (await shouldWriteGeneratedOutput(zodPath, zodPolicy, options.honorWorkflowPolicy));
+    (await shouldWriteGeneratedOutput(zodPath, zodPolicy, options.honorWorkflowPolicy, check));
   if (target !== "stdout" && !writeTypes && !writeZod) {
     return {
+      checked: [],
       diagnostics: [],
       skipped: skippedGeneratedOutputs(typesPath, typesPolicy, zodPath, zodPolicy),
       written: [],
@@ -46,26 +51,93 @@ export async function generateTypeContracts(
   }
   const model = await extractSourceModel(source, { config: options.config });
   if (hasErrors(model.diagnostics)) {
-    return { diagnostics: model.diagnostics, skipped: [], written: [] };
+    return { checked: [], diagnostics: model.diagnostics, skipped: [], written: [] };
   }
   const shapeDiagnostics: Diagnostic[] = [];
   const shapes = await collectSchemaShapes(model, shapeDiagnostics);
   const diagnostics = [...model.diagnostics, ...shapeDiagnostics];
-  const types = generateDatabaseTypes(shapes);
+  const buildInfo = await readBuildInfo();
+  const types = withGeneratedHeader(generateDatabaseTypes(shapes), buildInfo, model.fingerprint);
   if (target === "stdout") {
-    return { diagnostics, skipped: [], stdout: types, written: [] };
+    return { checked: [], diagnostics, skipped: [], stdout: types, written: [] };
+  }
+  if (check) {
+    const driftDiagnostics: Diagnostic[] = [];
+    const checked: string[] = [];
+    if (writeTypes) {
+      checked.push(...(await compareGeneratedOutput(typesPath, types, driftDiagnostics)));
+    }
+    if (writeZod) {
+      const zod = withGeneratedHeader(
+        generateZodSchemas(shapes, zodImportPath(options, writeTypes, zodPath, typesPath)),
+        buildInfo,
+        model.fingerprint
+      );
+      checked.push(...(await compareGeneratedOutput(zodPath, zod, driftDiagnostics)));
+    }
+    return {
+      checked,
+      diagnostics: [...diagnostics, ...driftDiagnostics],
+      skipped: [],
+      written: [],
+    };
   }
   const written: string[] = [];
   if (writeTypes) {
     written.push(await writeGeneratedOutput(typesPath, types));
   }
   if (writeZod) {
-    const typesImportPath =
-      options.config.zodTypesImportPath ??
-      (writeTypes ? typesModulePath(zodPath, typesPath) : undefined);
-    written.push(await writeGeneratedOutput(zodPath, generateZodSchemas(shapes, typesImportPath)));
+    written.push(
+      await writeGeneratedOutput(
+        zodPath,
+        withGeneratedHeader(
+          generateZodSchemas(shapes, zodImportPath(options, writeTypes, zodPath, typesPath)),
+          buildInfo,
+          model.fingerprint
+        )
+      )
+    );
   }
-  return { diagnostics, skipped: [], written };
+  return { checked: [], diagnostics, skipped: [], written };
+}
+
+function zodImportPath(
+  options: GeneratedContractsOptions,
+  writeTypes: boolean,
+  zodPath: string,
+  typesPath: string
+): string | undefined {
+  return (
+    options.config.zodTypesImportPath ??
+    (writeTypes ? typesModulePath(zodPath, typesPath) : undefined)
+  );
+}
+
+function withGeneratedHeader(contents: string, info: BuildInfo, fingerprint: string): string {
+  const commit = info.commit === null ? undefined : info.commit.slice(0, 12);
+  const build = commit === undefined ? info.version : `${info.version} (${commit})`;
+  return `// Generated by supaschema ${build}. Regenerate with: supaschema types\n// Fingerprint: ${fingerprint}\n\n${contents}`;
+}
+
+async function compareGeneratedOutput(
+  path: string,
+  contents: string,
+  diagnostics: Diagnostic[]
+): Promise<string[]> {
+  const existing = await readFile(path, "utf8").catch(() => null);
+  if (existing === contents) {
+    return [path];
+  }
+  diagnostics.push({
+    code: "SUPA_TYPES_CONTRACT_DRIFT",
+    file: path,
+    message:
+      existing === null
+        ? `regeneration would create ${path}; run supaschema types to write it`
+        : `regeneration would change ${path}; run supaschema types to refresh it`,
+    severity: "error",
+  });
+  return [];
 }
 
 function typesModulePath(zodPath: string, typesPath: string): string {
@@ -85,7 +157,8 @@ async function writeGeneratedOutput(path: string, contents: string): Promise<str
 async function shouldWriteGeneratedOutput(
   path: string,
   policy: SupaschemaConfig["workflow"]["type_generation"],
-  honorWorkflowPolicy: boolean | undefined
+  honorWorkflowPolicy: boolean | undefined,
+  checkMode = false
 ): Promise<boolean> {
   if (honorWorkflowPolicy !== true) {
     return true;
@@ -94,6 +167,9 @@ async function shouldWriteGeneratedOutput(
     return false;
   }
   if (policy === "create_or_refresh") {
+    return true;
+  }
+  if (checkMode) {
     return true;
   }
   return await pathExists(path);

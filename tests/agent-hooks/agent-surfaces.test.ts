@@ -4,35 +4,42 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCodexAgent, renderCodexRule } from "../../scripts/skills/codex-rules.mjs";
-import {
-  checkAgentSurfaces,
-  publicSkillNames,
-  syncAgentSurfaces,
-} from "../../scripts/skills/sync-llm.mjs";
+import { publicSkillNames, syncAgentSurfaces } from "../../scripts/skills/sync-llm.mjs";
+
+const publicSupaschemaSkill = `---
+name: supaschema
+description: Maintain Supaschema workflows.
+metadata:
+  public: true
+---
+
+# Supaschema
+`;
 
 describe("agent surface sync", { timeout: 30_000 }, () => {
-  it("passes when generated mirrors match the Claude-owned directories", async () => {
+  it("runs idempotently when generated mirrors already match", async () => {
     const root = await seedSurfaceRoot();
-    syncAgentSurfaces({ root });
+    const first = syncAgentSurfaces({ root });
+    const second = syncAgentSurfaces({ root });
 
-    expect(checkAgentSurfaces({ root })).toEqual([]);
+    expect(second).toEqual(first);
   });
 
-  it("reports missing, drifted, and unmanaged mirror files", async () => {
+  it("repairs missing, drifted, and unmanaged mirror files", async () => {
     const root = await seedSurfaceRoot();
     syncAgentSurfaces({ root });
     await rm(join(root, ".agents/skills/supaschema/SKILL.md"));
     await write(root, ".agents/skills/supaschema/extra.md", "extra\n");
     await write(root, ".agents/skills/upstream/SKILL.md", "drift\n");
 
-    const errors = checkAgentSurfaces({ root });
+    syncAgentSurfaces({ root });
 
-    expect(errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("mirror .agents/skills missing files: supaschema/SKILL.md"),
-        expect.stringContaining("mirror .agents/skills has unmanaged files: supaschema/extra.md"),
-        expect.stringContaining("mirror drifted for .agents/skills: upstream/SKILL.md"),
-      ])
+    expect(await readFile(join(root, ".agents/skills/supaschema/SKILL.md"), "utf8")).toBe(
+      publicSupaschemaSkill
+    );
+    expect(existsSync(join(root, ".agents/skills/supaschema/extra.md"))).toBe(false);
+    expect(await readFile(join(root, ".agents/skills/upstream/SKILL.md"), "utf8")).toBe(
+      "upstream skill\n"
     );
   });
 
@@ -57,21 +64,20 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
       skills: 4,
       skillTargets: 1,
     });
-    expect(checkAgentSurfaces({ root })).toEqual([]);
     expect(existsSync(join(root, ".agents/skills/upstream/extra.md"))).toBe(false);
     expect(existsSync(join(root, ".codex/hooks/stale.mjs"))).toBe(false);
     expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
     expect(existsSync(join(root, ".codex/rules/stale.rules"))).toBe(false);
     expect(existsSync(join(root, "skills/supaschema/stale.md"))).toBe(false);
     expect(await readFile(join(root, "skills/supaschema/SKILL.md"), "utf8")).toBe(
-      "supaschema skill\n"
+      publicSupaschemaSkill
     );
     expect(await readFile(join(root, "skills/supaschema/references/maintain.md"), "utf8")).toBe(
       "maintain reference\n"
     );
     expect(
       JSON.parse(await readFile(join(root, "agent-bundle/skills-manifest.json"), "utf8"))
-    ).toEqual({ skills: publicSkillNames });
+    ).toEqual({ skills: publicSkillNames(root) });
     expect(await readFile(join(root, ".codex/hooks/sample-hook.mjs"), "utf8")).toBe(
       await readFile(join(root, ".claude/hooks/sample-hook.mjs"), "utf8")
     );
@@ -95,9 +101,6 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     expect(existsSync(join(root, "agent-bundle/docs/image.png"))).toBe(false);
 
     await write(root, "docs/guide.mdx", "# Updated guide\n");
-    expect(checkAgentSurfaces({ root })).toEqual(
-      expect.arrayContaining(["raw agent bundle drifted: docs/guide.mdx"])
-    );
     syncAgentSurfaces({ root });
     expect(await readFile(join(root, "agent-bundle/docs/guide.mdx"), "utf8")).toBe(
       "# Updated guide\n"
@@ -120,22 +123,16 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
       .split("\n")
       .filter((line) => line.startsWith("- ["));
     expect(indexEntries).toEqual([...indexEntries].sort());
-    expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
-  it("detects and repairs generated Codex hook config drift", async () => {
+  it("repairs generated Codex hook config drift", async () => {
     const root = await seedSurfaceRoot();
     syncAgentSurfaces({ root });
     await write(root, ".codex/hooks.json", `${JSON.stringify({ hooks: { Stop: [] } }, null, 2)}\n`);
 
-    expect(checkAgentSurfaces({ root })).toEqual(
-      expect.arrayContaining(["generated Codex hook config drifted: .codex/hooks.json"])
-    );
-
     const result = syncAgentSurfaces({ root });
 
     expect(result.codexHookConfig).toBe(1);
-    expect(checkAgentSurfaces({ root })).toEqual([]);
     expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("context-stop.mjs");
   });
 
@@ -162,10 +159,9 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     expect(existsSync(join(root, ".codex/hooks"))).toBe(true);
     expect(existsSync(join(root, ".codex/agents"))).toBe(true);
     expect(existsSync(join(root, ".codex/rules"))).toBe(true);
-    expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
-  it("does not follow pre-existing temp-file symlinks while syncing mirrors", async () => {
+  it("rejects pre-existing temp-file symlinks while syncing mirrors", async () => {
     if (process.platform === "win32") {
       return;
     }
@@ -180,16 +176,101 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const tempCandidate = join(targetDir, `.SKILL.md.${process.pid}.${timestamp}.tmp`);
     await symlink(sentinel, tempCandidate);
 
-    const originalNow = Date.now;
-    Date.now = () => timestamp;
-    try {
-      syncAgentSurfaces({ root });
-    } finally {
-      Date.now = originalNow;
-    }
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      `.agents/skills/supaschema/.SKILL.md.${process.pid}.${timestamp}.tmp: symbolic links are not allowed`
+    );
 
     expect(await readFile(sentinel, "utf8")).toBe("keep\n");
-    expect(await readFile(join(targetDir, "SKILL.md"), "utf8")).toBe("supaschema skill\n");
+    expect(existsSync(join(targetDir, "SKILL.md"))).toBe(false);
+  });
+
+  it("rejects generated target-root symlinks before writing outside the repository", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-target-outside-"));
+    await write(outside, "sentinel.txt", "keep\n");
+    await symlink(outside, join(root, ".agents/skills"), "dir");
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".agents/skills: symbolic links are not allowed"
+    );
+    expect(await readFile(join(outside, "sentinel.txt"), "utf8")).toBe("keep\n");
+    expect(existsSync(join(outside, "supaschema/SKILL.md"))).toBe(false);
+  });
+
+  it("rejects source-root symlinks before copying external files", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-source-outside-"));
+    await write(outside, "supaschema/SKILL.md", publicSupaschemaSkill);
+    await rm(join(root, ".claude/skills"), { recursive: true });
+    await symlink(outside, join(root, ".claude/skills"), "dir");
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".claude/skills: symbolic links are not allowed"
+    );
+    expect(existsSync(join(root, ".agents/skills/supaschema/SKILL.md"))).toBe(false);
+    expect(existsSync(join(root, "skills/supaschema/SKILL.md"))).toBe(false);
+  });
+
+  it("rejects nested source symlinks before reading their targets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-nested-source-outside-"));
+    const sentinel = join(outside, "sentinel.mjs");
+    await writeFile(sentinel, "external secret\n");
+    await rm(join(root, ".claude/hooks/sample-hook.mjs"));
+    await symlink(sentinel, join(root, ".claude/hooks/sample-hook.mjs"));
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".claude/hooks/sample-hook.mjs: symbolic links are not allowed"
+    );
+    expect(existsSync(join(root, ".codex/hooks/sample-hook.mjs"))).toBe(false);
+  });
+
+  it("rejects exact source-file symlinks before reading their targets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-source-file-outside-"));
+    const sentinel = join(outside, "install.md");
+    await writeFile(sentinel, "external install prompt\n");
+    await rm(join(root, ".agents/prompts/supaschema-install.md"));
+    await symlink(sentinel, join(root, ".agents/prompts/supaschema-install.md"));
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".agents/prompts/supaschema-install.md: symbolic links are not allowed"
+    );
+    expect(existsSync(join(root, "agent-bundle/agents/prompts/supaschema-install.md"))).toBe(false);
+  });
+
+  it("rejects nested generated file symlinks instead of reading their targets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-file-outside-"));
+    const sentinel = join(outside, "sentinel.mjs");
+    await writeFile(sentinel, "keep\n");
+    await mkdir(join(root, ".codex/hooks"), { recursive: true });
+    await symlink(sentinel, join(root, ".codex/hooks/sample-hook.mjs"));
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".codex/hooks/sample-hook.mjs: symbolic links are not allowed"
+    );
+    expect(await readFile(sentinel, "utf8")).toBe("keep\n");
   });
 
   it("renders Claude agents as Codex custom-agent TOML", () => {
@@ -306,7 +387,7 @@ async function seedRequiredAgentBundleInputs(root: string): Promise<void> {
   await write(root, "agent-bundle/INSTALL.md", "install\n");
   await write(root, ".agents/prompts/supaschema-install.md", "install prompt\n");
   await write(root, ".claude/skills/supaschema/references/maintain.md", "maintain reference\n");
-  await write(root, ".claude/skills/supaschema/SKILL.md", "supaschema skill\n");
+  await write(root, ".claude/skills/supaschema/SKILL.md", publicSupaschemaSkill);
   await write(root, ".claude/hooks/guards/bash-policy-checks.mjs", "bash guard\n");
   await write(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs", "sync hook\n");
   await write(root, ".claude/rules/supaschema.md", "# Supaschema Rule\n");

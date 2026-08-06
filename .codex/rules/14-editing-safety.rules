@@ -3,4 +3,20 @@
 # Canonical rule owner: .claude/rules/14-editing-safety.md.
 # Full Markdown policy stays in the Claude rule source; this file contains Codex command policy only.
 
-# No codexExecPolicy entries declared by the canonical rule.
+# codexExecPolicy entries generated below.
+
+prefix_rule(
+    pattern = [["mktemp", "tempfile"]],
+    decision = "forbidden",
+    justification = "Temporary and scratch working-state commands are forbidden.",
+    match = ["mktemp -d", "tempfile"],
+    not_match = ["mkdir src/new-feature", "npm run sync:llm", "git status --short"],
+)
+
+prefix_rule(
+    pattern = ["git", "clone"],
+    decision = "forbidden",
+    justification = "Reviewable-work invariant.",
+    match = ["git clone . ../demo", "git clone https://example.com/repo.git demo"],
+    not_match = ["git status --short", "git show main:package.json"],
+)

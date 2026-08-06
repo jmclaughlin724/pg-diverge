@@ -30,18 +30,18 @@ describe("formatter file discovery", () => {
       mkdir(join(root, ".claude/worktrees/other"), { recursive: true }),
       mkdir(join(root, ".private"), { recursive: true }),
       mkdir(join(root, "ignored"), { recursive: true }),
-      mkdir(join(root, "scripts/code-atlas"), { recursive: true }),
+      mkdir(join(root, "scripts/stripe"), { recursive: true }),
       mkdir(join(root, "scripts"), { recursive: true }),
     ]);
     await Promise.all([
       writeFile(
         join(root, ".gitignore"),
-        ".claude/worktrees/\n.private/\nignored/\nscripts/code-atlas/\n"
+        ".claude/worktrees/\n.private/\nignored/\nscripts/stripe/\n"
       ),
       writeFile(join(root, ".claude/worktrees/other/config.toml"), "key = 'worktree'\n"),
       writeFile(join(root, ".private/config.toml"), "key = 'private'\n"),
       writeFile(join(root, "ignored/config.toml"), "key = 'ignored'\n"),
-      writeFile(join(root, "scripts/code-atlas/local.mjs"), "export {};\n"),
+      writeFile(join(root, "scripts/stripe/local.mjs"), "export {};\n"),
       writeFile(join(root, "scripts/tracked.sh"), "echo tracked\n"),
       writeFile(join(root, "scripts/untracked.sh"), "echo untracked\n"),
       writeFile(join(root, "tracked.toml"), "key = 'tracked'\n"),
@@ -73,17 +73,7 @@ describe("formatter file discovery", () => {
   });
 
   it("keeps local repository and Biome inventory in the shared file owner", () => {
-    expect(LOCAL_BIOME_PATHS).toEqual([
-      "scripts/code-atlas",
-      "scripts/stripe",
-      "services/license-worker",
-      "cloudflare",
-      ".claude/skills",
-      ".claude/settings.local.json",
-      ".mcp.json",
-      ".vscode",
-      "fastmcp.json",
-    ]);
+    expect(LOCAL_BIOME_PATHS).toEqual([".claude/skills", ".claude/settings.local.json", ".vscode"]);
     expect(LOCAL_REPOSITORY_FILES).toEqual(
       expect.arrayContaining([".mcp.json", "biome.jsonc", "cclsp.json", "fastmcp.json"])
     );
@@ -94,8 +84,8 @@ describe("formatter file discovery", () => {
       expect.objectContaining({ has: expect.any(Function) })
     );
     expect(REPOSITORY_DENY_SEGMENTS.has("node_modules")).toBe(true);
-    expect(isRepositoryContextPath("scripts/code-atlas/lib/config.mjs")).toBe(true);
-    expect(isRepositoryContextPath("scripts/code-atlas/node_modules/pkg/index.js")).toBe(false);
+    expect(isRepositoryContextPath("scripts/stripe/config.mjs")).toBe(true);
+    expect(isRepositoryContextPath("scripts/stripe/node_modules/pkg/index.js")).toBe(false);
     expect(isRepositoryContextPath(".private/config.json")).toBe(false);
   });
 

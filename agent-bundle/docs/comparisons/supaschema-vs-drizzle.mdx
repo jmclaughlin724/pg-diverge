@@ -19,15 +19,15 @@ Use `supaschema` when you want to remove the ORM from schema ownership, migratio
 
 ## Comparison
 
-| Capability | supaschema | Drizzle |
-| --- | --- | --- |
-| Schema source of truth | Declarative PostgreSQL SQL | TypeScript schema |
-| Migration generation | Diffs PostgreSQL parse trees (libpg_query) | `drizzle-kit generate` from the TypeScript schema |
-| Direct push without SQL files | No, migrations are always rendered SQL; `sync` applies the rendered migration after gates pass | `drizzle-kit push` applies schema changes directly |
-| Replay-safety and lock-hazard linting | Yes (`supaschema check`) | Not a built-in migration linter |
-| RLS policies | Modeled and diffed structurally in SQL | Supported via `pgPolicy` in the TypeScript schema |
-| Application data contract | Generated TypeScript and Zod from SQL | Inferred from the TypeScript schema and Drizzle query API |
-| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`drizzle-kit migrate` / `push`) |
+| Capability                            | supaschema                                                                                     | Drizzle                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Schema source of truth                | Declarative PostgreSQL SQL                                                                     | TypeScript schema                                         |
+| Migration generation                  | Diffs PostgreSQL parse trees (libpg_query)                                                     | `drizzle-kit generate` from the TypeScript schema         |
+| Direct push without SQL files         | No, migrations are always rendered SQL; `sync` applies the rendered migration after gates pass | `drizzle-kit push` applies schema changes directly        |
+| Replay-safety and lock-hazard linting | Yes (`supaschema check`)                                                                       | Not a built-in migration linter                           |
+| RLS policies                          | Modeled and diffed structurally in SQL                                                         | Supported via `pgPolicy` in the TypeScript schema         |
+| Application data contract             | Generated TypeScript and Zod from SQL                                                          | Inferred from the TypeScript schema and Drizzle query API |
+| Applies migrations                    | Yes, through explicit or approved automatic `supaschema sync` targets                          | Yes (`drizzle-kit migrate` / `push`)                      |
 
 ## Use supaschema instead of Drizzle for schema, migrations, and types
 
@@ -56,10 +56,9 @@ How the workflow maps onto what Drizzle does:
 
 See [ORM-free applications](/concepts/orm-free-applications) for the canonical directive.
 
-<Info>
-  Last verified 2026-06-17 against the Drizzle documentation. Drizzle evolves;
-  confirm current behavior before relying on it.
-</Info>
+:::info
+Last verified 2026-06-17 against the Drizzle documentation. Drizzle evolves; confirm current behavior before relying on it.
+:::
 
 <CardGroup cols={2}>
   <Card

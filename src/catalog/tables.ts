@@ -2,7 +2,7 @@ import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
 import type { TableColumn } from "../sql/table-shape.js";
 import type { SchemaObject } from "../types.js";
-import { type CatalogQuery, managedSchemaFilter, notExtensionMember } from "./query.js";
+import { type CatalogQuery, catalogSchemaFilter, notExtensionMember } from "./query.js";
 
 export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]> {
   const tables = await pool.query(`
@@ -22,7 +22,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
     left join pg_class pc on pc.oid = i.inhparent
     left join pg_namespace pn on pn.oid = pc.relnamespace
     where c.relkind in ('r', 'p')
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);

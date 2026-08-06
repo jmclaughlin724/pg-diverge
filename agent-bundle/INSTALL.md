@@ -42,7 +42,7 @@ Codex files:
 - `agent-bundle/codex/rules/supaschema.rules` to `.codex/rules/supaschema.rules`
 - the matching `agent-bundle/codex/hooks.<manager>.json` entries into `.codex/hooks.json`
 
-The merged hook settings contain only `supaschema hook generated-migration-edit` and `supaschema hook schema-write`. The repository's general Bash, Git, secret, branch, worktree, and deletion policy is not part of the consumer bundle. No `.codex/skills/**` directory is installed. Existing non-identical Agent or Claude skill files, including references, are preserved and reported individually.
+The merged hook settings contain only `supaschema hook generated-artifact-edit` and `supaschema hook schema-write`. Both are registered only for actual edit tools. The generated-artifact hook protects lineage-marked migrations and the configured `typesFile` / `zodFile`, and fails closed when config or hook input cannot be classified; it is not a shell-policy hook. The repository's parser-backed secret, literal-DDL, and broad-deletion Bash guard is not part of the consumer bundle. No `.codex/skills/**` directory is installed. Existing non-identical Agent or Claude skill files, including references, are preserved and reported individually.
 
 Use the package manager that owns the project:
 

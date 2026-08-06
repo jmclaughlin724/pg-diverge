@@ -13,13 +13,24 @@ paths:
   - "AGENTS.md"
 ---
 
-# Rule 19 — Version control and release
+# Rule 19 - Version control and release
 
 ## Contract
 
 This rule owns the operator workflow for version bumps, release notes, the mandatory `$update` audit, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, run `$update` after versioning, prove parity with the guards, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 
-Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, editing safety, generated-surface sync, and the complete source-control lifecycle. This rule connects those owners into the version bump path.
+## Publishing is automatic when a version bump merges
+
+`.github/workflows/release.yml` triggers on `push` to `main`, and its preflight decides whether the pushed version still needs publishing. Merging a PR that bumps `package.json` `version` therefore publishes to npm and creates the GitHub Release with no separate publish step and no publish approval to request afterward. Merging a PR that leaves the version unchanged makes no stable release: preflight finds the version already published and exits successfully.
+
+Every `main` push also runs `.github/workflows/snapshot.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag. Do not tell a user that a version-unchanged merge published nothing; it produced no `latest` release, and its snapshot run can still fail and needs the same attention as any other failed workflow.
+
+- Approval to merge a version-bumped PR is approval to release. Do not merge and then report publishing as still blocked or still pending.
+- Never run `npm publish`, `npm version` with a tag push, or `gh release create` locally. Releases publish through npm OIDC trusted publishing with build provenance from the privileged workflow job; a local publish bypasses provenance attestation and is prohibited even when npm credentials are present.
+- Before telling a user that a release step remains, read `.github/workflows/release.yml` triggers and resolve the release run for the merge commit. Registry state, the GitHub Release, and that run's conclusion are the evidence; an external handoff, plan, or issue claiming a manual publish step is not.
+- When a merge is requested and the branch carries a version bump, say that merging publishes before merging, then merge and verify with the post-merge commands below.
+- Tie release proof to the merge SHA and to a terminal conclusion. `gh run list --workflow=release.yml` alone lists recent runs and can match an older success, so it never proves the current release; use `--commit <merge-sha>` and wait for the run to finish. A published npm version does not prove the GitHub Release step succeeded, so check both.
+- Repair a partially failed release by re-running that merge commit's own failed run, not by dispatching `main`. The workflow checks out `github.sha`, derives the version from that checkout, and creates the tag with `--target "$GITHUB_SHA"`, so a dispatch after later commits land would tag the release at the wrong commit or act on a different version. Use `workflow_dispatch` only when `main` still points at the commit needing repair. Preflight is idempotent either way: an already-published version exits successfully without republishing.
 
 ## Release-note owner
 
@@ -31,7 +42,7 @@ Changesets may collect PR-local release intent and may drive `npm run release:ve
 
 When asked to create or update to version `<version>`, do all of this in the same change:
 
-1. Inspect `git status --short --branch` and preserve unrelated dirty work.
+1. Inspect `git status --short --branch`.
 2. Update `package.json` and `package-lock.json` together. Prefer `npm version <version> --no-git-tag-version` unless both files already carry the requested version.
 3. Add or update the top `CHANGELOG.md` entry as `## <version> (YYYY-MM-DD)` with concise, source-grounded release notes.
 4. Keep `action.yml` `inputs.version.default` unset; the action runner defaults from `package.json`. Keep exact-version validation text generic and do not duplicate `<version>` in the runner message.
@@ -44,13 +55,10 @@ A version bump that only changes `package.json` and `package-lock.json` is incom
 
 ## Git and PR transaction
 
-When the user asks to stage, commit, push, or create a PR after a version bump:
+When the user asks to stage, commit, push, or create a PR after a version bump, use these release specifics:
 
-- Stage only task-owned hunks after reviewing `git diff`.
 - Use a release-specific commit message such as `Prepare release <version>` or `Enforce release version surfaces`.
-- Let local hooks run. Do not use `--no-verify`.
-- Push only the intended release branch after Rule 21 verifies the active checkout; never reuse a merged topic branch.
-- Before creating or replacing a PR, complete Rule 21 PR preflight and mergeability verification.
+- Push only the intended release branch.
 - When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, base branch, head branch, commit count, changed-file count, mergeability result, and verification commands in the PR body.
 - If CI fails on a version-coupled surface, fix the source drift and add or update guard coverage so the same miss fails locally next time.
 
@@ -65,10 +73,15 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - `.github/workflows/release.yml` creates GitHub Releases with `--notes-file` from `scripts/release/changelog-notes.mjs`, not `--generate-notes`.
 - `npm run guard` runs `guard:release-version` through `scripts/guards/check-all.mjs`.
 - `tests/release/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
+- Snapshot publishing is the one permitted dist-tag write: `snapshot.yml` publishes immutable `X.Y.(Z+1)-dev.<sha>` builds to the `next` tag from protected `main` pushes. The `latest` tag remains release.yml-only, and consuming a snapshot always resolves to an exact version before install; dist-tags remain forbidden for action execution.
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
-- Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 
-STOP if a version bump leaves any known release surface on the previous version, skips `$update` after the final release-owned changes, adds a GitHub Action default version, uses an npm dist-tag for action execution, omits the changelog top entry, publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, reuses a merged topic branch, or opens a PR before Rule 21 scope and mergeability verification passes.
+STOP if a version bump does any of these:
+
+- Leaves any known release surface on the previous version, or skips `$update` after the final release-owned changes.
+- Adds a GitHub Action default version, or uses an npm dist-tag for action execution.
+- Omits the changelog top entry, or publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`.
+- Commits generated mirrors without syncing from the canonical owner, bypasses hooks, or weakens a guard or test to make the release pass.
 
 ## Verification
 
@@ -93,13 +106,23 @@ For rule or generated agent-surface changes, also run:
 
 ```bash
 npm run sync:llm
-npm run sync:llm:check
+```
+
+After merging a version-bumped PR into `main`, prove the automatic release instead of reporting a pending publish. Resolve the run for the merge commit, wait for it, and check its conclusion:
+
+```bash
+gh run list --workflow=release.yml --commit <merge-sha> --json databaseId,status,conclusion
+gh run watch <run-id> --exit-status
+npm view supaschema@<version> version
+gh release view v<version> --json tagName,publishedAt,isDraft
 ```
 
 ## Failure behavior
 
-Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, bypass hooks, or patch generated mirrors directly.
+Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, or bypass hooks.
 
 ## Done means
 
-All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git/PR actions are completed without touching unrelated work.
+All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git and PR actions completed without touching unrelated work.
+
+When the transaction included a merge to `main`, the release is also verified rather than assumed: the `release.yml` run for that merge commit concluded successfully, `npm view supaschema@<version> version` resolves the exact released version, and the GitHub Release exists for its tag. No publish step is reported as outstanding.

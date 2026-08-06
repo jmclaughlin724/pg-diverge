@@ -81,13 +81,14 @@ describe("npm package contents", () => {
     const required = [
       "dist/index.js",
       "dist/index.d.ts",
+      "dist/build-info.json",
       packageBinPath(),
       "bin/scaffold.mjs",
       "bin/config-contract.mjs",
       "supaschema-config.schema.json",
       "agent-bundle/INSTALL.md",
       "agent-bundle/skills-manifest.json",
-      "agent-bundle/docs/coding-agents.mdx",
+      "agent-bundle/docs/coding-agents/index.mdx",
       "agent-bundle/docs/index.md",
       "agent-bundle/agents/prompts/supaschema-install.md",
       "agent-bundle/agents/skills/supaschema/references/diagnostics.md",
@@ -166,7 +167,7 @@ describe("npm package contents", () => {
     expect(codexHookContents).not.toContain("scripts/agent-hooks");
     expect(codexHookContents).not.toContain("general-guard.mjs");
     expect(codexHookContents).not.toContain("bash-policy-checks.mjs");
-    expect(codexHookContents).toContain("supaschema hook generated-migration-edit");
+    expect(codexHookContents).toContain("supaschema hook generated-artifact-edit");
     expect(codexHookContents).toContain("supaschema hook schema-write");
     expect(codexHookContents).not.toContain("npx --no-install");
     expect(
@@ -195,6 +196,22 @@ describe("npm package contents", () => {
       path.startsWith("node_modules/");
     const leaks = paths.filter(isLeak);
     expect(leaks, `unexpected files in npm tarball: ${leaks.join(", ")}`).toEqual([]);
+    const allowedRoots = [
+      "agent-bundle/",
+      "bin/",
+      "dist/",
+      "LICENSE",
+      "README.md",
+      "package.json",
+      "supaschema-config.schema.json",
+    ];
+    const outsideSurface = paths.filter(
+      (path) => !allowedRoots.some((root) => path === root || path.startsWith(root))
+    );
+    expect(
+      outsideSurface,
+      `files outside the declared publish surface: ${outsideSurface.join(", ")}`
+    ).toEqual([]);
     expect(packed.unpackedSize, `npm tarball unpacked bytes: ${packed.unpackedSize}`).toBeLessThan(
       2_000_000
     );

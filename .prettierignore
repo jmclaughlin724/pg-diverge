@@ -1,4 +1,4 @@
-# Prettier owns MDX, Markdown, and YAML formatting in this repo (run it via
+# Prettier owns Astro, MDX, Markdown, and YAML formatting in this repo (run it via
 # `npm run format:md`). Biome owns JS/TS/JSON/JSONC/CSS; SQL is governed by
 # supaschema's parser/deparser/semantic checks, not a text formatter — see
 # .claude/rules/06-multi-language-toolchain.md and 08-biome-ultracite-policy.md.
@@ -10,6 +10,8 @@ dist/**
 coverage/**
 out/
 .tmp/**
+docs/.blume/**
+docs/.blume-verify/**
 
 # Python (uv workspace) virtualenvs + tool caches — never Prettier's concern.
 **/.venv/**
@@ -19,8 +21,7 @@ out/
 **/.mypy_cache/**
 
 # Generated agent-surface mirrors — format the `.claude` source instead and let
-# `npm run sync:llm` regenerate these; formatting them directly would drift the
-# byte-identical parity that check-agent-surface-parity enforces.
+# `npm run sync:llm` regenerate these; generated mirrors are writer-owned.
 .agents/**
 .codex/**
 agent-bundle/**

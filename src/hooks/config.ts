@@ -99,7 +99,9 @@ export interface SchemaPathState {
   pathConfirmationNeeded: boolean;
   schemaPaths: string[];
   sync: SupaschemaConfig["sync"];
+  typesFile: string;
   workflow: SupaschemaConfig["workflow"];
+  zodFile: string;
 }
 
 export interface AutomaticSyncPlan {
@@ -109,7 +111,7 @@ export interface AutomaticSyncPlan {
 }
 
 export function readSchemaPathState(projectDir: string): SchemaPathState {
-  const { environments, explicit, migrationsDir, schemaPaths, sync, workflow } =
+  const { environments, explicit, migrationsDir, schemaPaths, sync, typesFile, workflow, zodFile } =
     readConfigPathFields(projectDir);
   const manifest = readInstallManifest(projectDir);
   const confirmationNeeded =
@@ -147,7 +149,9 @@ export function readSchemaPathState(projectDir: string): SchemaPathState {
       pathConfirmationNeeded: true,
       schemaPaths: schemaPaths.map((path) => resolve(projectDir, path)),
       sync,
+      typesFile: resolve(projectDir, typesFile),
       workflow,
+      zodFile: resolve(projectDir, zodFile),
     };
   }
   return {
@@ -159,7 +163,9 @@ export function readSchemaPathState(projectDir: string): SchemaPathState {
     pathConfirmationNeeded: false,
     schemaPaths: schemaPaths.map((path) => resolve(projectDir, path)),
     sync,
+    typesFile: resolve(projectDir, typesFile),
     workflow,
+    zodFile: resolve(projectDir, zodFile),
   };
 }
 
@@ -234,7 +240,9 @@ function readConfigPathFields(projectDir: string): {
   migrationsDir?: string;
   schemaPaths: string[];
   sync: SupaschemaConfig["sync"];
+  typesFile: string;
   workflow: SupaschemaConfig["workflow"];
+  zodFile: string;
 } {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
@@ -245,7 +253,9 @@ function readConfigPathFields(projectDir: string): {
     explicit: false,
     schemaPaths: [defaultSchemaPath(projectDir)],
     sync: { targets: {} },
+    typesFile: resolveConfig().typesFile,
     workflow: resolveConfig().workflow,
+    zodFile: resolveConfig().zodFile,
   };
 }
 
@@ -258,7 +268,9 @@ function resolveConfigPathFields(
   migrationsDir?: string;
   schemaPaths: string[];
   sync: SupaschemaConfig["sync"];
+  typesFile: string;
   workflow: SupaschemaConfig["workflow"];
+  zodFile: string;
 } {
   const record =
     typeof config === "object" && config !== null && !Array.isArray(config) ? config : {};
@@ -281,7 +293,9 @@ function resolveConfigPathFields(
     ...(migrationsDir === undefined ? {} : { migrationsDir }),
     schemaPaths: explicitSchemaPaths ?? [defaultSchemaPath(projectDir)],
     sync: resolved.sync,
+    typesFile: resolved.typesFile,
     workflow: resolved.workflow,
+    zodFile: resolved.zodFile,
   };
 }
 

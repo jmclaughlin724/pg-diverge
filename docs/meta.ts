@@ -1,0 +1,21 @@
+export default {
+  order: 1,
+  pages: [
+    "introduction",
+    "whats-included",
+    "installation",
+    "quickstart",
+    "setup",
+    "faq",
+    "commands",
+    "concepts",
+    "configuration",
+    "guides",
+    "coding-agents",
+    "comparisons",
+    "benchmarks",
+    "case-study-anilize",
+    "reference",
+  ],
+  title: "Supaschema",
+};

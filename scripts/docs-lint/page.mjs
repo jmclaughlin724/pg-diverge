@@ -28,8 +28,8 @@ const TITLE_CASE_WORD_ALLOWLIST = new Set([
   "Codex",
   "GitHub",
   "JSON",
+  "Blume",
   "MCP",
-  "Mintlify",
   "Node.js",
   "PostgreSQL",
   "RLS",
@@ -53,14 +53,6 @@ const mdxProcessor = unified()
   .use(remarkMdx);
 
 const lineOf = (node) => node.position?.start?.line ?? 1;
-
-const firstWord = (text) => {
-  const trimmed = text.trim();
-  const spaceIndex = [...trimmed].findIndex((character) =>
-    [" ", "\t", "\n", "\r", "\f"].includes(character)
-  );
-  return spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
-};
 
 const splitWhitespace = (value) => {
   const words = [];
@@ -124,15 +116,6 @@ const isTitleCaseWord = (word) =>
 export function inspectDocsPage(text, displayFile, violations) {
   const processor = displayFile.endsWith(".mdx") ? mdxProcessor : markdownProcessor;
 
-  if (displayFile.endsWith(".md")) {
-    violations.push({
-      file: displayFile,
-      line: 1,
-      msg: "docs pages must use .mdx so Mintlify components remain available by default",
-      rule: "page-extension",
-    });
-  }
-
   let tree;
   try {
     tree = processor.parse(text);
@@ -147,10 +130,9 @@ export function inspectDocsPage(text, displayFile, violations) {
   }
 
   const frontmatter = readFrontmatter(tree, displayFile, violations);
-  const state = { hasFlagsOrOptionsHeading: false, hasParamField: false };
 
   visit(tree, (node) => {
-    inspectDocNode(node, displayFile, violations, state);
+    inspectDocNode(node, displayFile, violations);
   });
   visitWithParents(tree, (node, ancestors) => {
     inspectAdjacentCallouts(node, displayFile, violations);
@@ -158,28 +140,14 @@ export function inspectDocsPage(text, displayFile, violations) {
   });
   inspectComparisonPage(tree, displayFile, violations);
 
-  if (
-    displayFile.startsWith("docs/commands/") &&
-    displayFile.endsWith(".mdx") &&
-    state.hasFlagsOrOptionsHeading &&
-    !state.hasParamField
-  ) {
-    violations.push({
-      file: displayFile,
-      line: 1,
-      msg: "command page has a Flags/Options section but no <ParamField> - document each flag with <ParamField> (Mintlify standard)",
-      rule: "component",
-    });
-  }
-
   return frontmatter;
 }
 
-function inspectDocNode(node, displayFile, violations, state) {
-  inspectHeading(node, displayFile, violations, state);
+function inspectDocNode(node, displayFile, violations) {
+  inspectHeading(node, displayFile, violations);
   inspectCodeFence(node, displayFile, violations);
   inspectMarkdownLink(node, displayFile, violations);
-  inspectMdxNode(node, displayFile, violations, state);
+  inspectMdxNode(node, displayFile, violations);
 }
 
 function inspectComparisonPage(tree, displayFile, violations) {
@@ -261,7 +229,7 @@ function hasOutboundLink(node) {
   return found;
 }
 
-function inspectHeading(node, displayFile, violations, state) {
+function inspectHeading(node, displayFile, violations) {
   if (node.type !== "heading") {
     return;
   }
@@ -273,9 +241,6 @@ function inspectHeading(node, displayFile, violations, state) {
       msg: "drop the body `# ` heading - the frontmatter `title` is the page H1; start in-page headings at `##`",
       rule: "body-h1",
     });
-  }
-  if (node.depth === 2 && ["Flags", "Options"].includes(firstWord(headingText))) {
-    state.hasFlagsOrOptionsHeading = true;
   }
   if (node.depth >= 2 && isObviousTitleCaseHeading(node, headingText)) {
     violations.push({

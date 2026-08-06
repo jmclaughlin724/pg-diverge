@@ -121,6 +121,26 @@ describe("canonical surfaces guard", () => {
     );
   });
 
+  it("allows monetization terms inside the tracked license worker", {
+    timeout: 20_000,
+  }, async () => {
+    const root = tempGuardRepo({
+      "services/license-worker/src/checkout.ts":
+        "export const endpoint = 'https://api.stripe.com/v1/checkout/sessions';\n",
+    });
+    await expect(check(root)).resolves.toBeUndefined();
+  });
+
+  it("allows monetization terms inside the tracked stripe catalog tooling", {
+    timeout: 20_000,
+  }, async () => {
+    const root = tempGuardRepo({
+      "scripts/stripe/create-catalog.mjs":
+        "export const endpoint = 'https://api.stripe.com/v1/products';\n",
+    });
+    await expect(check(root)).resolves.toBeUndefined();
+  });
+
   it("allows package scripts without recursive force deletion", async () => {
     const root = tempGuardRepo({
       "package.json": packageJson({ lint: "node scripts/check.mjs" }),

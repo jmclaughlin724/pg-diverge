@@ -27,23 +27,12 @@ npx supaschema plan | jq '.operations'
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Before-state source. Defaults to `config.sources.from`. A `migrations:` value
-  must match the configured migrations directory.
-</ParamField>
-
-<ParamField path="--to" type="source">
-  Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`. Migration
-  replay is not supported here.
-</ParamField>
-
-<ParamField path="--schema" type="names">
-  Plan only the comma-separated PostgreSQL schema names.
-</ParamField>
-
-<ParamField path="--timing" type="boolean">
-  Print extract and plan timings to stderr.
-</ParamField>
+| Name       | Type    | Description                                                                                                                   |
+| ---------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--from`   | source  | Before-state source. Defaults to `config.sources.from`. A `migrations:` value must match the configured migrations directory. |
+| `--to`     | source  | Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`. Migration replay is not supported here.                      |
+| `--schema` | names   | Plan only the comma-separated PostgreSQL schema names.                                                                        |
+| `--timing` | boolean | Print extract and plan timings to stderr.                                                                                     |
 
 ## Exit codes
 
