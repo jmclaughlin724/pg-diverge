@@ -783,7 +783,12 @@ function appendBlockingDependentPreDrop(
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  if (!blockingObjectDependentKinds.has(object.ref.kind)) {
+  if (
+    !(
+      blockingObjectDependentKinds.has(object.ref.kind) ||
+      isCrossTableRelationDependent(object, context.dependencyIdentities)
+    )
+  ) {
     return false;
   }
   if (!(context.fromKeys.has(object.key) || targetOnlyReplayPreDropKinds.has(object.ref.kind))) {
@@ -852,10 +857,26 @@ function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<str
   ) {
     return true;
   }
+  if (isCrossTableRelationDependent(object, dependencyIdentities)) {
+    return true;
+  }
   return (
     object.ref.kind === "grant" &&
     typeof object.metadata.targetIdentity === "string" &&
     dependencyIdentities.has(object.metadata.targetIdentity)
+  );
+}
+
+function isCrossTableRelationDependent(
+  object: SchemaObject,
+  dependencyIdentities: Set<string>
+): boolean {
+  if (!relationDependentKinds.has(object.ref.kind)) {
+    return false;
+  }
+  const ownTable = tableRefIdentity(object.ref);
+  return object.dependencies.some(
+    (dependency) => dependencyIdentities.has(dependency) && dependency !== ownTable
   );
 }
 

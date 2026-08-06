@@ -60,14 +60,14 @@ interface DependencyGraph {
 function buildDependencyGraph(base: MigrationOperation[]): DependencyGraph {
   const operationByKey = new Map(base.map((operation) => [operation.key, operation]));
 
-  const dropKeyByIdentity = identityIndex(base.filter((operation) => operation.kind === "drop"));
+  const keyByIdentity = identityIndex(base);
   const upsertKeyByIdentity = identityIndex(base.filter((operation) => operation.kind !== "drop"));
   const constraintDependencies = buildConstraintDependencyIndex(base);
   const outgoing = new Map<string, Set<string>>();
   const incomingCount = new Map<string, number>();
   initializeDependencyGraph(base, outgoing, incomingCount);
   for (const operation of base) {
-    const index = operation.kind === "drop" ? dropKeyByIdentity : upsertKeyByIdentity;
+    const index = operation.kind === "drop" ? keyByIdentity : upsertKeyByIdentity;
     addOperationDependencies(
       operation,
       index,

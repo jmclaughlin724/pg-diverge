@@ -51,7 +51,7 @@ import type {
   SupaschemaConfig,
   TableColumn,
 } from "../types.js";
-import { normalizeSourceObjects } from "./normalize.js";
+import { coveringRevokeForRegrant, normalizeSourceObjects } from "./normalize.js";
 
 interface ReplayResult {
   diagnostics: Diagnostic[];
@@ -435,6 +435,13 @@ async function applyExtractedObject(
   }
   const existing = objects.get(object.key);
   if (existing && isReplayPrivilegeObject(object)) {
+    const clearedRevoke =
+      object.metadata.verb === "GRANT" ? coveringRevokeForRegrant(objects, existing) : undefined;
+    if (clearedRevoke) {
+      objects.delete(clearedRevoke.key);
+      objects.set(object.key, object);
+      return emptyResult();
+    }
     return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
   }
   if (existing && statement.tag === "AlterTableStmt" && object.ref.kind === "constraint") {
