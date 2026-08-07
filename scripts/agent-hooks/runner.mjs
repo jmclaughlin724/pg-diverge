@@ -9,7 +9,6 @@ import {
   runChecks,
   shapeHookResult,
   shapeSessionStateFailure,
-  unexpectedFailureResult,
 } from "./hook-output.mjs";
 import { verificationClaimConflict } from "./response-claims.mjs";
 import { finalMessage } from "./response-evidence.mjs";
@@ -21,17 +20,10 @@ export function runAgentHookEvent(eventName, options = {}) {
   runHookEntrypoint(eventName, handleAgentHookEvent, { root, ...options });
 }
 
-export async function handleAgentHookEvent(eventName, payload, options = {}) {
+export function handleAgentHookEvent(eventName, payload, options = {}) {
   const runtime = options.runtime ?? "claude";
   const hookPath = options.hookPath ?? "scripts/agent-hooks/runner.mjs";
   const hookRoot = options.root ?? root;
-  const commentResult = await commentFreeSourceResult(
-    eventName,
-    payload,
-    hookRoot,
-    hookPath,
-    runtime
-  );
   try {
     return withSessionState(payload, (state, metadata) => {
       const context = { hookPath, root: hookRoot, runtime, state };
@@ -41,8 +33,7 @@ export async function handleAgentHookEvent(eventName, payload, options = {}) {
         beginTurnState(payload, state);
       } else if (eventName === "PreToolUse") {
         selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [bashSafety], context);
-        mergeResult(result, commentResult);
+        result = runChecks(eventName, payload, [bashSafety, commentFreeSource], context);
       } else if (eventName === "PostToolUse") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [toolEvidence], context);
@@ -64,20 +55,6 @@ export async function handleAgentHookEvent(eventName, payload, options = {}) {
     });
   } catch (error) {
     return shapeSessionStateFailure(eventName, error, { hookPath, runtime });
-  }
-}
-
-async function commentFreeSourceResult(eventName, payload, hookRoot, hookPath, runtime) {
-  if (eventName !== "PreToolUse") {
-    return {};
-  }
-  try {
-    return await commentFreeSource(payload, { root: hookRoot });
-  } catch (error) {
-    return unexpectedFailureResult(eventName, error, "commentFreeSource", {
-      hookPath,
-      runtime,
-    });
   }
 }
 

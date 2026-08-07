@@ -7,7 +7,7 @@ const addHeader = "*** Add File: ";
 const updateHeader = "*** Update File: ";
 const moveHeader = "*** Move to: ";
 
-export async function commentFreeSource(payload, context) {
+export function commentFreeSource(payload, context) {
   if (!editTools.has(payload?.tool_name)) {
     return {};
   }
@@ -15,7 +15,7 @@ export async function commentFreeSource(payload, context) {
   if (typeof input !== "object" || input === null) {
     return {};
   }
-  const reason = await addedCommentReason(payload.tool_name, input, context.root);
+  const reason = addedCommentReason(payload.tool_name, input, context.root);
   return reason ? { deny: reason } : {};
 }
 
@@ -59,13 +59,13 @@ function editReason(toolName, input, root) {
   return denyForAddedComments(rel, postText, [preText]);
 }
 
-async function patchReason(input, root) {
+function patchReason(input, root) {
   const command = stringField(input, "command");
   if (command === undefined) {
     return;
   }
   for (const target of patchCodeTargets(command, root)) {
-    const reason = await denyForPatchTarget(target, root);
+    const reason = denyForPatchTarget(target, root);
     if (reason) {
       return reason;
     }
@@ -91,12 +91,12 @@ function denyForPatchTarget(target, root) {
   return denyForAddedComments(target.rel, postText, [preText]);
 }
 
-async function denyForAddedComments(rel, postText, preTexts) {
-  const added = await addedComments(rel, postText, preTexts);
+function denyForAddedComments(rel, postText, preTexts) {
+  const added = addedComments(rel, postText, preTexts);
   return added.length > 0 ? denyMessage(rel, added) : undefined;
 }
 
-async function addedComments(fileName, postText, preTexts) {
+function addedComments(fileName, postText, preTexts) {
   let preTextList;
   if (preTexts === undefined) {
     preTextList = [];
@@ -105,12 +105,10 @@ async function addedComments(fileName, postText, preTexts) {
   } else {
     preTextList = [preTexts];
   }
-  const preComments = (
-    await Promise.all(preTextList.map((text) => jsTsComments(fileName, text ?? "")))
-  ).flat();
+  const preComments = preTextList.flatMap((text) => jsTsComments(fileName, text ?? ""));
   const preCounts = commentTextCounts(preComments);
   const added = [];
-  for (const comment of await jsTsComments(fileName, postText)) {
+  for (const comment of jsTsComments(fileName, postText)) {
     const remaining = preCounts.get(comment.text) ?? 0;
     if (remaining > 0) {
       preCounts.set(comment.text, remaining - 1);
