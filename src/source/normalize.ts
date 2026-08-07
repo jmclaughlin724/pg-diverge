@@ -39,7 +39,8 @@ export async function normalizeSourceObjects(
   const afterComments = applyCommentTransitions(afterOwnedBy);
   const afterRls = await mergeRlsFacets(afterComments, options);
   const afterClearedPairs = suppressClearedRevokeGrantPairs(afterRls);
-  const mergedGrants = await mergeSplitPrivileges(afterClearedPairs, "grant", options);
+  const afterInterleaved = await resolveInterleavedPrivilegeRegrants(afterClearedPairs, options);
+  const mergedGrants = await mergeSplitPrivileges(afterInterleaved, "grant", options);
   const withoutDefaultEquals = suppressDefaultEqualPrivileges(mergedGrants);
   const withoutImpliedGrants = suppressDefaultAclImpliedGrants(withoutDefaultEquals);
   const mergedDefaults = await mergeSplitPrivileges(
@@ -221,6 +222,163 @@ function suppressClearedRevokeGrantPairs(objects: SchemaObject[]): SchemaObject[
     }
   }
   return nettedAway.size === 0 ? objects : objects.filter((object) => !nettedAway.has(object));
+}
+
+async function resolveInterleavedPrivilegeRegrants(
+  objects: SchemaObject[],
+  options: SourceNormalizeOptions
+): Promise<SchemaObject[]> {
+  const remove = new Set<SchemaObject>();
+  const replacements = new Map<string, SchemaObject>();
+  for (const group of collectPrivilegeGroups(objects).values()) {
+    const net = interleavedPrivilegeNet(group);
+    if (net === undefined) {
+      continue;
+    }
+    for (const member of group) {
+      remove.add(member);
+    }
+    const template = earliestGrant(group);
+    if (template && net.length > 0) {
+      const built = await buildNetGrantObject(template, group, net, options);
+      if (built) {
+        replacements.set(template.key, built);
+      }
+    }
+  }
+  if (remove.size === 0) {
+    return objects;
+  }
+  return applyInterleavedReplacements(objects, remove, replacements);
+}
+
+function collectPrivilegeGroups(objects: SchemaObject[]): Map<string, SchemaObject[]> {
+  const groups = new Map<string, SchemaObject[]>();
+  for (const object of objects) {
+    if (object.ref.kind !== "grant") {
+      continue;
+    }
+    const key = privilegeTargetKey(object);
+    const group = groups.get(key) ?? [];
+    group.push(object);
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+function earliestGrant(group: SchemaObject[]): SchemaObject | undefined {
+  return group
+    .filter((object) => object.metadata.verb === "GRANT" && !isBuiltinPublicRevoke(object))
+    .sort((left, right) => left.ordinal - right.ordinal)[0];
+}
+
+function applyInterleavedReplacements(
+  objects: SchemaObject[],
+  remove: Set<SchemaObject>,
+  replacements: Map<string, SchemaObject>
+): SchemaObject[] {
+  const result: SchemaObject[] = [];
+  for (const object of objects) {
+    if (!remove.has(object)) {
+      result.push(object);
+      continue;
+    }
+    const replacement = replacements.get(object.key);
+    if (replacement) {
+      result.push(replacement);
+      replacements.delete(object.key);
+    }
+  }
+  return result;
+}
+
+function interleavedPrivilegeNet(group: SchemaObject[]): string[] | undefined {
+  const ordered = [...group].sort((left, right) => left.ordinal - right.ordinal);
+  let hasGrant = false;
+  let hasRevoke = false;
+  for (const object of ordered) {
+    const verb = interleavedPrivilegeVerb(object);
+    if (verb === undefined) {
+      return;
+    }
+    if (verb === "GRANT") {
+      hasGrant = true;
+    } else {
+      hasRevoke = true;
+    }
+  }
+  if (!(hasGrant && hasRevoke)) {
+    return;
+  }
+  const state = new Set<string>();
+  for (const object of ordered) {
+    applyPrivilegeTransition(
+      state,
+      object.metadata.verb === "GRANT",
+      metadataPrivileges(object.metadata)
+    );
+  }
+  return [...state].sort((left, right) => left.localeCompare(right));
+}
+
+function interleavedPrivilegeVerb(object: SchemaObject): "GRANT" | "REVOKE" | undefined {
+  if (isBuiltinPublicRevoke(object)) {
+    return;
+  }
+  const privileges = metadataPrivileges(object.metadata);
+  if (privileges.includes("ALL") || object.metadata.columnPrivileges !== undefined) {
+    return;
+  }
+  const grantOption = stringArray(object.metadata.grantOptionPrivileges) ?? [];
+  if (grantOption.length > 0) {
+    return;
+  }
+  return object.metadata.verb === "GRANT" ? "GRANT" : "REVOKE";
+}
+
+function applyPrivilegeTransition(
+  state: Set<string>,
+  isGrant: boolean,
+  privileges: string[]
+): void {
+  for (const privilege of privileges) {
+    if (isGrant) {
+      state.add(privilege);
+    } else {
+      state.delete(privilege);
+    }
+  }
+}
+
+async function buildNetGrantObject(
+  template: SchemaObject,
+  group: SchemaObject[],
+  privileges: string[],
+  options: SourceNormalizeOptions
+): Promise<SchemaObject | undefined> {
+  const meta = template.metadata;
+  if (
+    typeof meta.grantee !== "string" ||
+    typeof meta.kindPhrase !== "string" ||
+    typeof meta.target !== "string" ||
+    typeof meta.targetIdentity !== "string"
+  ) {
+    return;
+  }
+  const built = buildGrantObject({
+    file: template.file,
+    grantee: meta.grantee,
+    kindPhrase: meta.kindPhrase,
+    ordinal: template.ordinal,
+    privileges,
+    schema: template.ref.schema,
+    targetIdentity: meta.targetIdentity,
+    targetRendered: meta.target,
+    verb: "GRANT",
+  });
+  built.dependencies = mergedDependencies(group);
+  await finalizeObject(built, { normalize: options.normalize === true });
+  return built;
 }
 
 function revokeCoversGrants(revoke: SchemaObject, grants: SchemaObject[]): boolean {

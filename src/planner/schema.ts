@@ -60,7 +60,7 @@ export function planSchemaDiff(
     suppressReplacedRelationGrantDrops(operations),
     diagnostics
   );
-  appendOperationDiagnostics(diagnostics, operations);
+  appendOperationDiagnostics(diagnostics, sortedOperations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
     diagnostics.push(emptyPlanDriftDiagnostic(fromMap, toMap, from, to));
   }
@@ -293,6 +293,7 @@ function objectMap(objects: SchemaObject[]): Map<string, SchemaObject> {
 
 const replacedDependencyKinds = new Set<ObjectKind>([
   "domain",
+  "foreign-table",
   "materialized-view",
   "table",
   "type",

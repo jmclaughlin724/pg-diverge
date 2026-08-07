@@ -216,6 +216,9 @@ function createdRelationIdentities(statement: AstStatement): Set<string> {
   if (statement.tag === "CreateStmt") {
     addRangeVarIdentity(identities, node.relation);
   }
+  if (statement.tag === "CreateForeignTableStmt") {
+    addRangeVarIdentity(identities, asRecord(node.base)?.relation);
+  }
   if (statement.tag === "ViewStmt") {
     addRangeVarIdentity(identities, node.view);
   }
@@ -270,7 +273,7 @@ function addRangeVarIdentity(into: Set<string>, value: unknown): void {
 }
 
 const RELATION_DROP_REMOVE_TYPES = new Set([
-  "OBJECT_FOREIGN TABLE",
+  "OBJECT_FOREIGN_TABLE",
   "OBJECT_MATVIEW",
   "OBJECT_SEQUENCE",
   "OBJECT_TABLE",
@@ -314,9 +317,11 @@ function removeAll<T>(from: Set<T>, values: Iterable<T>): void {
 
 function removeColumnsForRelations(columns: Set<string>, relations: ReadonlySet<string>): void {
   for (const identity of [...columns]) {
-    const relation = identity.slice(0, identity.lastIndexOf("."));
-    if (relations.has(relation)) {
-      columns.delete(identity);
+    for (const relation of relations) {
+      if (identity.startsWith(`${relation}.`)) {
+        columns.delete(identity);
+        break;
+      }
     }
   }
 }

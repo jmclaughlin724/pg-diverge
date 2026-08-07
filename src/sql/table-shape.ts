@@ -335,6 +335,13 @@ function unifiedInPredicatePayload(record: AstNode): Record<string, unknown> | u
   if (kind !== "AEXPR_IN" && kind !== "AEXPR_OP_ANY" && kind !== "AEXPR_OP_ALL") {
     return;
   }
+  const quantifierOperator = asRecord(asRecord(readArray(expression.name)[0])?.String)?.sval;
+  if (kind === "AEXPR_OP_ANY" && quantifierOperator !== "=") {
+    return;
+  }
+  if (kind === "AEXPR_OP_ALL" && quantifierOperator !== "<>") {
+    return;
+  }
   const rexpr = asRecord(expression.rexpr);
   const items =
     kind === "AEXPR_IN"
@@ -427,10 +434,16 @@ function constantTypeCastPayload(record: AstNode): unknown {
   if (!arg || arg.A_Const === undefined) {
     return;
   }
-  if (!constantCastTypes.has(typeNameToSql(typeCast.typeName))) {
+  const typeName = typeNameToSql(typeCast.typeName);
+  if (!constantCastTypes.has(typeName)) {
     return;
   }
-  return canonicalConstraintPayload(stripLocations(arg));
+  return {
+    ConstantCast: {
+      arg: canonicalConstraintPayload(stripLocations(arg)),
+      typeName: canonicalConstraintTypeName(typeCast.typeName),
+    },
+  };
 }
 
 function canonicalConstraintTypeName(value: unknown): unknown {

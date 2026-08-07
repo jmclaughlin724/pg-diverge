@@ -235,6 +235,22 @@ $$;`);
     expect(model.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(0);
   });
 
+  it("resolves interleaved partial revoke and regrant pairs to the net granted set", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT, INSERT ON TABLE app.t TO app_user;\nREVOKE SELECT ON TABLE app.t FROM app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\nREVOKE INSERT ON TABLE app.t FROM app_user;\nGRANT INSERT ON TABLE app.t TO app_user;\n"
+    );
+    const net = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT, INSERT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.verb).toBe("GRANT");
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+    expect(model.fingerprint).toBe(net.fingerprint);
+  });
+
   it("replaces a table-wide grant with a revoke plus column-scoped re-grant", async () => {
     const before = await modelFromSql(
       "CREATE SCHEMA crm;\nCREATE TABLE crm.contact_documents (id uuid, organization_id uuid, contact_id uuid, document_id uuid, attached_by uuid);\nGRANT SELECT, INSERT, UPDATE ON TABLE crm.contact_documents TO authenticated;\n"
