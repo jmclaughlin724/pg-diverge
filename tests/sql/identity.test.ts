@@ -339,3 +339,37 @@ describe("view qualification canonicalization", () => {
     expect(qualified.hash).not.toBe(outerBare.hash);
   });
 });
+
+describe("quantified array predicate canonicalization", () => {
+  it("folds flat = ANY(ARRAY[...]) to IN (...)", async () => {
+    const anyForm = await singleObject(
+      "ALTER TABLE app.t ADD CONSTRAINT chk CHECK (id = ANY(ARRAY[1, 2]));"
+    );
+    const inForm = await singleObject("ALTER TABLE app.t ADD CONSTRAINT chk CHECK (id IN (1, 2));");
+
+    expect(anyForm.key).toBe(inForm.key);
+    expect(anyForm.hash).toBe(inForm.hash);
+  });
+
+  it("does not fold nested = ANY(ARRAY[[...], [...]]) to a flat IN list", async () => {
+    const nestedAny = await singleObject(
+      "ALTER TABLE app.t ADD CONSTRAINT chk CHECK (id = ANY(ARRAY[[1, 2], [3, 4]]));"
+    );
+    const flatAny = await singleObject(
+      "ALTER TABLE app.t ADD CONSTRAINT chk CHECK (id = ANY(ARRAY[1, 2]));"
+    );
+
+    expect(nestedAny.hash).not.toBe(flatAny.hash);
+  });
+
+  it("does not fold nested <> ALL(ARRAY[[...], [...]]) to a flat NOT IN list", async () => {
+    const nestedAll = await singleObject(
+      "ALTER TABLE app.t ADD CONSTRAINT chk CHECK (id <> ALL(ARRAY[[1, 2], [3, 4]]));"
+    );
+    const flatAll = await singleObject(
+      "ALTER TABLE app.t ADD CONSTRAINT chk CHECK (id <> ALL(ARRAY[1, 2]));"
+    );
+
+    expect(nestedAll.hash).not.toBe(flatAll.hash);
+  });
+});

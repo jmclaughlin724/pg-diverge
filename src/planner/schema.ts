@@ -787,7 +787,8 @@ function appendBlockingDependentPreDrop(
   if (
     !(
       blockingObjectDependentKinds.has(object.ref.kind) ||
-      isCrossTableRelationDependent(object, context.dependencyIdentities)
+      isCrossTableRelationDependent(object, context.dependencyIdentities) ||
+      isTriggerDependentOnAffectedRoutine(object, context.dependencyIdentities)
     )
   ) {
     return false;
@@ -804,6 +805,17 @@ function appendBlockingDependentPreDrop(
   }
   markPreDroppedReplacement(object.key, operations);
   return changed;
+}
+
+function isTriggerDependentOnAffectedRoutine(
+  object: SchemaObject,
+  dependencyIdentities: ReadonlySet<string>
+): boolean {
+  if (object.ref.kind !== "trigger") {
+    return false;
+  }
+  const triggerFunction = object.metadata.triggerFunction;
+  return typeof triggerFunction === "string" && dependencyIdentities.has(triggerFunction);
 }
 
 function markPreDroppedReplacement(key: string, operations: MigrationOperation[]): void {
@@ -859,6 +871,9 @@ function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<str
     return true;
   }
   if (isCrossTableRelationDependent(object, dependencyIdentities)) {
+    return true;
+  }
+  if (isTriggerDependentOnAffectedRoutine(object, dependencyIdentities)) {
     return true;
   }
   return (

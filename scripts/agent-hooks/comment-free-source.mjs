@@ -7,7 +7,7 @@ const addHeader = "*** Add File: ";
 const updateHeader = "*** Update File: ";
 const moveHeader = "*** Move to: ";
 
-export function commentFreeSource(payload, context) {
+export async function commentFreeSource(payload, context) {
   if (!editTools.has(payload?.tool_name)) {
     return {};
   }
@@ -15,7 +15,7 @@ export function commentFreeSource(payload, context) {
   if (typeof input !== "object" || input === null) {
     return {};
   }
-  const reason = addedCommentReason(payload.tool_name, input, context.root);
+  const reason = await addedCommentReason(payload.tool_name, input, context.root);
   return reason ? { deny: reason } : {};
 }
 
@@ -39,7 +39,7 @@ function writeReason(input, root) {
   if (!isJsTsCodeFile(rel)) {
     return;
   }
-  return denyForAddedComments(rel, content, readTextIfExists(path.resolve(root, rel)));
+  return denyForAddedComments(rel, content, [readTextIfExists(path.resolve(root, rel))]);
 }
 
 function editReason(toolName, input, root) {
@@ -56,31 +56,61 @@ function editReason(toolName, input, root) {
   for (const edit of collectEdits(toolName, input)) {
     postText = applyEdit(postText, edit);
   }
-  return denyForAddedComments(rel, postText, preText);
+  return denyForAddedComments(rel, postText, [preText]);
 }
 
-function patchReason(input, root) {
+async function patchReason(input, root) {
   const command = stringField(input, "command");
   if (command === undefined) {
     return;
   }
   for (const target of patchCodeTargets(command, root)) {
-    const reason = denyForAddedComments(target.rel, target.addedText, target.removedText);
+    const reason = await denyForPatchTarget(target, root);
     if (reason) {
       return reason;
     }
   }
 }
 
-function denyForAddedComments(rel, postText, preText) {
-  const added = addedComments(rel, postText, preText);
+function denyForPatchTarget(target, root) {
+  if (target.moveDest !== undefined) {
+    const sourcePreText = readTextIfExists(path.resolve(root, target.rel));
+    const destPreText = readTextIfExists(path.resolve(root, target.moveDest));
+    const postText = applyHunk(sourcePreText ?? "", target.hunk);
+    return denyForAddedComments(target.moveDest, postText, [sourcePreText, destPreText]);
+  }
+  if (target.isAddFile) {
+    const postText = target.hunk
+      .filter((operation) => operation.kind === "add")
+      .map((operation) => operation.line)
+      .join("\n");
+    return denyForAddedComments(target.rel, postText, []);
+  }
+  const preText = readTextIfExists(path.resolve(root, target.rel));
+  const postText = applyHunk(preText ?? "", target.hunk);
+  return denyForAddedComments(target.rel, postText, [preText]);
+}
+
+async function denyForAddedComments(rel, postText, preTexts) {
+  const added = await addedComments(rel, postText, preTexts);
   return added.length > 0 ? denyMessage(rel, added) : undefined;
 }
 
-function addedComments(fileName, postText, preText) {
-  const preCounts = commentTextCounts(jsTsComments(fileName, preText ?? ""));
+async function addedComments(fileName, postText, preTexts) {
+  let preTextList;
+  if (preTexts === undefined) {
+    preTextList = [];
+  } else if (Array.isArray(preTexts)) {
+    preTextList = preTexts;
+  } else {
+    preTextList = [preTexts];
+  }
+  const preComments = (
+    await Promise.all(preTextList.map((text) => jsTsComments(fileName, text ?? "")))
+  ).flat();
+  const preCounts = commentTextCounts(preComments);
   const added = [];
-  for (const comment of jsTsComments(fileName, postText)) {
+  for (const comment of await jsTsComments(fileName, postText)) {
     const remaining = preCounts.get(comment.text) ?? 0;
     if (remaining > 0) {
       preCounts.set(comment.text, remaining - 1);
@@ -123,61 +153,86 @@ function applyEdit(text, edit) {
     : text.replace(edit.oldString, edit.newString);
 }
 
+function applyHunk(preText, hunk) {
+  const preLines = preText.split("\n");
+  const postLines = [];
+  let preIndex = 0;
+
+  for (const operation of hunk) {
+    if (operation.kind === "context" || operation.kind === "remove") {
+      const found = findLine(preLines, operation.line, preIndex);
+      if (found >= 0) {
+        postLines.push(
+          ...preLines.slice(preIndex, operation.kind === "remove" ? found : found + 1)
+        );
+        preIndex = found + 1;
+      }
+    } else if (operation.kind === "add") {
+      postLines.push(operation.line);
+    }
+  }
+
+  postLines.push(...preLines.slice(preIndex));
+  return postLines.join("\n");
+}
+
+function findLine(lines, line, startIndex) {
+  const direct = lines.indexOf(line, startIndex);
+  if (direct >= 0 || line.length === 0) {
+    return direct;
+  }
+  const stripped = line.startsWith(" ") ? line.slice(1) : line;
+  return stripped === line ? -1 : lines.indexOf(stripped, startIndex);
+}
+
 function patchCodeTargets(command, root) {
   const targets = [];
-  let rel;
-  let isFullFile = false;
-  const added = [];
-  const removed = [];
+  let current;
   const flush = () => {
-    if (rel !== undefined) {
-      targets.push(
-        isFullFile
-          ? { rel, addedText: added.join("\n"), isFullFile: true }
-          : {
-              rel,
-              addedText: added.join("\n"),
-              removedText: removed.join("\n"),
-              isFullFile: false,
-            }
-      );
+    if (current !== undefined) {
+      targets.push(current);
+      current = undefined;
     }
-    rel = undefined;
-    isFullFile = false;
-    added.length = 0;
-    removed.length = 0;
   };
   for (const line of command.split("\n")) {
     const header = patchHeader(line, root);
-    if (header) {
-      flush();
-      rel = header.rel;
-      isFullFile = header.isFullFile;
+    if (header !== undefined) {
+      if (header.kind === "move") {
+        if (current === undefined) {
+          current = { rel: header.rel, hunk: [], isAddFile: false };
+        } else {
+          current.moveDest = header.rel;
+        }
+      } else {
+        flush();
+        current = { rel: header.rel, hunk: [], isAddFile: header.kind === "add" };
+      }
       continue;
     }
-    if (rel === undefined) {
+    if (current === undefined) {
       continue;
     }
     if (line.startsWith("+") && !line.startsWith("+++")) {
-      added.push(line.slice(1));
-    } else if (!isFullFile && line.startsWith("-") && !line.startsWith("---")) {
-      removed.push(line.slice(1));
+      current.hunk.push({ kind: "add", line: line.slice(1) });
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      current.hunk.push({ kind: "remove", line: line.slice(1) });
+    } else if (!current.isAddFile) {
+      current.hunk.push({ kind: "context", line });
     }
   }
   flush();
-  return targets.filter((target) => isJsTsCodeFile(target.rel));
+  return targets.filter((target) => isJsTsCodeFile(target.moveDest ?? target.rel));
 }
 
 function patchHeader(line, root) {
-  if (line.startsWith(addHeader) || line.startsWith(moveHeader)) {
-    const slice = line.startsWith(addHeader) ? addHeader.length : moveHeader.length;
-    return { rel: repoRelative(line.slice(slice).trim(), root), isFullFile: true };
+  if (line.startsWith(addHeader)) {
+    return { kind: "add", rel: repoRelative(line.slice(addHeader.length).trim(), root) };
   }
   if (line.startsWith(updateHeader)) {
-    return {
-      rel: repoRelative(line.slice(updateHeader.length).trim(), root),
-      isFullFile: false,
-    };
+    return { kind: "update", rel: repoRelative(line.slice(updateHeader.length).trim(), root) };
+  }
+  if (line.startsWith(moveHeader)) {
+    return { kind: "move", rel: repoRelative(line.slice(moveHeader.length).trim(), root) };
   }
 }
 

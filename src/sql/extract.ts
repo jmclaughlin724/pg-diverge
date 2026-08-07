@@ -519,7 +519,26 @@ function triggerObjects(
   ordinal: number,
   file: string | undefined
 ): SchemaObject[] | undefined {
-  return tableScopedObject("trigger", node.relation, node.trigname, statement, ordinal, file);
+  const objects = tableScopedObject(
+    "trigger",
+    node.relation,
+    node.trigname,
+    statement,
+    ordinal,
+    file
+  );
+  if (!objects || objects.length === 0) {
+    return objects;
+  }
+  const triggerFunction = qualifiedName(node.funcname);
+  if (!triggerFunction) {
+    return objects;
+  }
+  const triggerFunctionIdentity = `${triggerFunction.schema ?? "public"}.${triggerFunction.name}`;
+  for (const object of objects) {
+    object.metadata.triggerFunction = triggerFunctionIdentity;
+  }
+  return objects;
 }
 
 function policyObjects(

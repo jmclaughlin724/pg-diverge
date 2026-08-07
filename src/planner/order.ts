@@ -311,7 +311,7 @@ function operationDependencyEdge(
   dependencyOperation: MigrationOperation,
   operationByKey: ReadonlyMap<string, MigrationOperation>
 ): [string, string] | undefined {
-  if (isRoutineDropAfterRelationReplace(operation, dependencyOperation)) {
+  if (isRoutineDropAfterRelationReplace(operation, dependencyOperation, operationByKey)) {
     return [dependencyOperation.key, operation.key];
   }
   if (isTableAlterDependency(dependencyOperation)) {
@@ -390,14 +390,18 @@ const replacedRelationDropKinds = new Set<ObjectKind>([
 
 function isRoutineDropAfterRelationReplace(
   operation: MigrationOperation,
-  dependencyOperation: MigrationOperation
+  dependencyOperation: MigrationOperation,
+  operationByKey: ReadonlyMap<string, MigrationOperation>
 ): boolean {
-  return (
-    operation.kind === "drop" &&
-    routineDropKinds.has(operation.ref.kind) &&
-    dependencyOperation.kind === "replace" &&
-    replacedRelationDropKinds.has(dependencyOperation.ref.kind)
-  );
+  if (
+    operation.kind !== "drop" ||
+    !routineDropKinds.has(operation.ref.kind) ||
+    dependencyOperation.kind !== "replace" ||
+    !replacedRelationDropKinds.has(dependencyOperation.ref.kind)
+  ) {
+    return false;
+  }
+  return operationByKey.has(`pre-drop:${operation.key}`);
 }
 
 function isTableAlterDependency(operation: MigrationOperation): boolean {

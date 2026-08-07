@@ -293,47 +293,52 @@ function applyInterleavedReplacements(
 }
 
 function interleavedPrivilegeNet(group: SchemaObject[]): string[] | undefined {
+  const net = privilegeNetSet(group);
+  if (!net) {
+    return;
+  }
+  return [...net].sort((left, right) => left.localeCompare(right));
+}
+
+function privilegeNetSet(group: SchemaObject[]): Set<string> | undefined {
   const ordered = [...group].sort((left, right) => left.ordinal - right.ordinal);
   let hasGrant = false;
   let hasRevoke = false;
+  const state = new Set<string>();
   for (const object of ordered) {
-    const verb = interleavedPrivilegeVerb(object);
-    if (verb === undefined) {
+    if (!isNettablePrivilegeObject(object)) {
       return;
     }
-    if (verb === "GRANT") {
+    const isGrant = object.metadata.verb === "GRANT";
+    if (isGrant) {
       hasGrant = true;
     } else {
       hasRevoke = true;
     }
+    applyPrivilegeTransition(state, isGrant, metadataPrivileges(object.metadata));
   }
   if (!(hasGrant && hasRevoke)) {
     return;
   }
-  const state = new Set<string>();
-  for (const object of ordered) {
-    applyPrivilegeTransition(
-      state,
-      object.metadata.verb === "GRANT",
-      metadataPrivileges(object.metadata)
-    );
-  }
-  return [...state].sort((left, right) => left.localeCompare(right));
+  return state;
 }
 
-function interleavedPrivilegeVerb(object: SchemaObject): "GRANT" | "REVOKE" | undefined {
+function isNettablePrivilegeObject(object: SchemaObject): boolean {
+  if (object.ref.kind !== "grant") {
+    return false;
+  }
   if (isBuiltinPublicRevoke(object)) {
-    return;
+    return false;
   }
   const privileges = metadataPrivileges(object.metadata);
   if (privileges.includes("ALL") || object.metadata.columnPrivileges !== undefined) {
-    return;
+    return false;
   }
   const grantOption = stringArray(object.metadata.grantOptionPrivileges) ?? [];
   if (grantOption.length > 0) {
-    return;
+    return false;
   }
-  return object.metadata.verb === "GRANT" ? "GRANT" : "REVOKE";
+  return true;
 }
 
 function applyPrivilegeTransition(
@@ -395,26 +400,108 @@ function revokeCoversGrants(revoke: SchemaObject, grants: SchemaObject[]): boole
   );
 }
 
-export function coveringRevokeForRegrant(
+interface RegrantNetResult {
+  remove: SchemaObject[];
+  replacement?: SchemaObject;
+}
+
+export async function coveringRevokeForRegrant(
   objects: ReadonlyMap<string, SchemaObject>,
-  existing: SchemaObject
-): SchemaObject | undefined {
-  if (existing.ref.kind !== "grant") {
+  existing: SchemaObject,
+  incoming: SchemaObject,
+  options: SourceNormalizeOptions
+): Promise<RegrantNetResult | undefined> {
+  if (existing.ref.kind !== "grant" || incoming.ref.kind !== "grant") {
+    return;
+  }
+  if (existing.metadata.verb !== "GRANT" || incoming.metadata.verb !== "GRANT") {
     return;
   }
   const targetKey = privilegeTargetKey(existing);
+  if (privilegeTargetKey(incoming) !== targetKey) {
+    return;
+  }
+  const { revokes: laterRevokes, coveringNonNettable } = laterRevokesForRegrant(
+    objects,
+    existing,
+    targetKey
+  );
+  if (laterRevokes.length === 0) {
+    return;
+  }
+  if (coveringNonNettable) {
+    return { remove: [coveringNonNettable] };
+  }
+  const canNetPerPrivilege =
+    isNettablePrivilegeObject(existing) &&
+    isNettablePrivilegeObject(incoming) &&
+    laterRevokes.every(isNettablePrivilegeObject);
+  if (!canNetPerPrivilege) {
+    const coveringRevoke = laterRevokes.find((revoke) => revokeCoversGrants(revoke, [existing]));
+    if (coveringRevoke) {
+      return { remove: [coveringRevoke] };
+    }
+    return;
+  }
+  const group = [existing, incoming, ...laterRevokes];
+  const net = privilegeNetSet(group);
+  if (!net) {
+    return;
+  }
+  if (net.size === 0) {
+    return { remove: group };
+  }
+  const replacement = await buildRegrantNetReplacement(group, incoming, options);
+  if (!replacement) {
+    return;
+  }
+  return { remove: group, replacement };
+}
+
+function laterRevokesForRegrant(
+  objects: ReadonlyMap<string, SchemaObject>,
+  existing: SchemaObject,
+  targetKey: string
+): { revokes: SchemaObject[]; coveringNonNettable: SchemaObject | undefined } {
+  const revokes: SchemaObject[] = [];
+  let coveringNonNettable: SchemaObject | undefined;
   for (const object of objects.values()) {
     if (
       object.ref.kind === "grant" &&
       isRevokedPrivilegeObject(object) &&
       !isBuiltinPublicRevoke(object) &&
       privilegeTargetKey(object) === targetKey &&
-      object.ordinal > existing.ordinal &&
-      revokeCoversGrants(object, [existing])
+      object.ordinal > existing.ordinal
     ) {
-      return object;
+      revokes.push(object);
+      if (!isNettablePrivilegeObject(object) && revokeCoversGrants(object, [existing])) {
+        coveringNonNettable = object;
+      }
     }
   }
+  return { revokes, coveringNonNettable };
+}
+
+async function buildRegrantNetReplacement(
+  group: SchemaObject[],
+  incoming: SchemaObject,
+  options: SourceNormalizeOptions
+): Promise<SchemaObject | undefined> {
+  const net = privilegeNetSet(group);
+  if (!net || net.size === 0) {
+    return;
+  }
+  const template = earliestGrant(group) ?? incoming;
+  const built = await buildNetGrantObject(
+    template,
+    group,
+    [...net].sort((left, right) => left.localeCompare(right)),
+    options
+  );
+  if (built) {
+    built.ordinal = incoming.ordinal;
+  }
+  return built;
 }
 
 interface ColumnDefaultAmendment {

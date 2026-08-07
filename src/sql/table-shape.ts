@@ -350,6 +350,9 @@ function unifiedInPredicatePayload(record: AstNode): Record<string, unknown> | u
   if (items.length === 0) {
     return;
   }
+  if (kind !== "AEXPR_IN" && items.some((item) => asRecord(item)?.A_ArrayExpr)) {
+    return;
+  }
   return {
     A_Expr: {
       kind: "AEXPR_IN",

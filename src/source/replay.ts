@@ -419,6 +419,28 @@ function isIdempotentDuplicateCreateStatement(
   );
 }
 
+async function applyRegrantNet(
+  object: SchemaObject,
+  existing: SchemaObject,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext
+): Promise<ReplayResult | undefined> {
+  if (object.metadata.verb !== "GRANT") {
+    return;
+  }
+  const regrantNet = await coveringRevokeForRegrant(objects, existing, object, {
+    normalize: context.normalize,
+  });
+  if (!regrantNet) {
+    return;
+  }
+  for (const removed of regrantNet.remove) {
+    objects.delete(removed.key);
+  }
+  objects.set(object.key, regrantNet.replacement ?? object);
+  return emptyResult();
+}
+
 async function applyExtractedObject(
   statement: AstStatement,
   object: SchemaObject,
@@ -435,12 +457,9 @@ async function applyExtractedObject(
   }
   const existing = objects.get(object.key);
   if (existing && isReplayPrivilegeObject(object)) {
-    const clearedRevoke =
-      object.metadata.verb === "GRANT" ? coveringRevokeForRegrant(objects, existing) : undefined;
-    if (clearedRevoke) {
-      objects.delete(clearedRevoke.key);
-      objects.set(object.key, object);
-      return emptyResult();
+    const regrantResult = await applyRegrantNet(object, existing, objects, context);
+    if (regrantResult) {
+      return regrantResult;
     }
     return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
   }

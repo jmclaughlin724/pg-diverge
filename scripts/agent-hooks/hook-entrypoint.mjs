@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { shapeHookResult, unexpectedFailureResult, writeHookResult } from "./hook-output.mjs";
 import { hookRuntime, hookRuntimeDisabled } from "./hook-runtime.mjs";
 
-export function runHookEntrypoint(eventName, handler, options = {}) {
+export async function runHookEntrypoint(eventName, handler, options = {}) {
   const runtime = options.runtime ?? hookRuntime();
   const hookPath = options.hookPath ?? process.argv[1] ?? "unknown";
   let shaped = disabledHookResult(eventName, runtime);
@@ -10,7 +10,7 @@ export function runHookEntrypoint(eventName, handler, options = {}) {
     try {
       const payload = readStdinJson();
       options.validatePayload?.(payload, runtime, eventName);
-      shaped = handler(eventName, payload, {
+      shaped = await handler(eventName, payload, {
         ...options,
         hookPath,
         runtime,

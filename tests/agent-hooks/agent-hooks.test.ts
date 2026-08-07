@@ -675,6 +675,41 @@ describe("comment-free source write-time enforcement", () => {
     });
     expect(decision(result.stdout).decision).toBe("deny");
   });
+
+  it("allows a +// line added inside a multiline template literal", async () => {
+    const file = await writeProbe("export const s = `\nhello\n`;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const s = \`\n hello\n+// text\n \`;\n`,
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("allows a net-neutral comment move via Move to", async () => {
+    const file = await writeProbe("export const x = 1;\n// move me\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const x = 1;\n // move me\n*** Move to: src/__moved_probe.ts\n`,
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("does not load the comment scanner for a non-edit tool", { timeout: 20_000 }, async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-comment-hook-lazy-load-"));
+    const startedAt = Date.now();
+    const result = await runHook(
+      join(root, ".claude/hooks/context-pre-tool-use.mjs"),
+      {
+        hook_event_name: "PreToolUse",
+        session_id: `comment-hook-lazy-${Math.random().toString(36).slice(2)}`,
+        tool_input: { file_path: "src/index.ts" },
+        tool_name: "Read",
+      },
+      hookEnvironment("claude", { STATE_DIR: stateDir })
+    );
+    const elapsedMs = Date.now() - startedAt;
+    expect(result.code).toBe(0);
+    expect(decision(result.stdout).decision).toBeUndefined();
+    expect(elapsedMs).toBeLessThan(500);
+  });
 });
 
 function slash(absolutePath: string): string {

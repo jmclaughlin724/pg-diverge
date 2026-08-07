@@ -42,7 +42,7 @@ export async function changeDisciplineViolations(
   return [
     ...forbiddenFileNameViolations(codeFiles),
     ...exportOnlyModuleViolations(jsTsFiles, root),
-    ...jsTsCommentViolations(jsTsFiles, root),
+    ...(await jsTsCommentViolations(jsTsFiles, root)),
     ...jsTsTypeAssertionViolations(jsTsFiles, root),
     ...jsTsCopiedEnumTupleViolations(jsTsFiles, root),
     ...jsTsDeferredMarkerViolations(jsTsFiles, root),
@@ -86,13 +86,19 @@ function exportOnlyModuleViolations(candidates, root) {
   });
 }
 
-function jsTsCommentViolations(candidates, root) {
-  return candidates.flatMap((file) =>
-    jsTsComments(file, readText(file, root)).map(
-      (comment) =>
-        `${file}:${comment.line}:${comment.character} contains a ${comment.kind} comment; move durable explanation to the owning rule, test, or docs surface.`
+async function jsTsCommentViolations(candidates, root) {
+  return (
+    await Promise.all(
+      candidates.map(async (file) =>
+        (
+          await jsTsComments(file, readText(file, root))
+        ).map(
+          (comment) =>
+            `${file}:${comment.line}:${comment.character} contains a ${comment.kind} comment; move durable explanation to the owning rule, test, or docs surface.`
+        )
+      )
     )
-  );
+  ).flat();
 }
 
 function jsTsTypeAssertionViolations(candidates, root) {
