@@ -638,6 +638,22 @@ describe("comment-free source write-time enforcement", () => {
     expect(decision(result.stdout).decision).toBe("deny");
   });
 
+  it("denies an apply_patch update that adds a duplicate-text comment", async () => {
+    const file = await writeProbe("export const a = 1;\n// existing\nexport const b = 2;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const a = 1;\n // existing\n export const b = 2;\n+// existing\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows an apply_patch update that moves a comment by delete and re-add", async () => {
+    const file = await writeProbe("export const a = 1;\n// move me\nexport const b = 2;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const a = 1;\n-// move me\n export const b = 2;\n+// move me\n`,
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
   it("denies an apply_patch add of a new commented file under src", async () => {
     const result = await runEdit("apply_patch", {
       command: "*** Add File: src/__new_probe.ts\n+export const x = 1;\n+// comment\n",

@@ -65,10 +65,7 @@ function patchReason(input, root) {
     return;
   }
   for (const target of patchCodeTargets(command, root)) {
-    const preText = target.isFullFile
-      ? undefined
-      : readTextIfExists(path.resolve(root, target.rel));
-    const reason = denyForAddedComments(target.rel, target.addedText, preText);
+    const reason = denyForAddedComments(target.rel, target.addedText, target.removedText);
     if (reason) {
       return reason;
     }
@@ -130,14 +127,25 @@ function patchCodeTargets(command, root) {
   const targets = [];
   let rel;
   let isFullFile = false;
-  const lines = [];
+  const added = [];
+  const removed = [];
   const flush = () => {
     if (rel !== undefined) {
-      targets.push({ rel, addedText: lines.join("\n"), isFullFile });
+      targets.push(
+        isFullFile
+          ? { rel, addedText: added.join("\n"), isFullFile: true }
+          : {
+              rel,
+              addedText: added.join("\n"),
+              removedText: removed.join("\n"),
+              isFullFile: false,
+            }
+      );
     }
     rel = undefined;
     isFullFile = false;
-    lines.length = 0;
+    added.length = 0;
+    removed.length = 0;
   };
   for (const line of command.split("\n")) {
     const header = patchHeader(line, root);
@@ -147,8 +155,13 @@ function patchCodeTargets(command, root) {
       isFullFile = header.isFullFile;
       continue;
     }
-    if (rel !== undefined && line.startsWith("+") && !line.startsWith("+++")) {
-      lines.push(line.slice(1));
+    if (rel === undefined) {
+      continue;
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      added.push(line.slice(1));
+    } else if (!isFullFile && line.startsWith("-") && !line.startsWith("---")) {
+      removed.push(line.slice(1));
     }
   }
   flush();
