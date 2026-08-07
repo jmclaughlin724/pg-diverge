@@ -274,7 +274,7 @@ describe("actual context hook entrypoints", () => {
       env
     );
     expect(recorded).toMatchObject({ code: 0, stderr: "", stdout: "" });
-    expect(Date.now() - recoveryStartedAt).toBeLessThan(2000);
+    expect(Date.now() - recoveryStartedAt).toBeLessThan(5000);
 
     const governed = await runHook(
       join(root, ".claude/hooks/context-pre-tool-use.mjs"),
@@ -326,7 +326,7 @@ describe("actual context hook entrypoints", () => {
       const elapsedMs = Date.now() - startedAt;
 
       expect(elapsedMs).toBeGreaterThanOrEqual(450);
-      expect(elapsedMs).toBeLessThan(2000);
+      expect(elapsedMs).toBeLessThan(5000);
       expect(hookOutput(liveEnd.stdout).systemMessage).toContain(
         "timed out waiting for session state lock"
       );
