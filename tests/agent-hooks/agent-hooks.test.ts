@@ -694,6 +694,14 @@ describe("comment-free source write-time enforcement", () => {
     expect(decision(result.stdout).decision).toBe("deny");
   });
 
+  it("denies a comment added by a later Update File section that only parses as a comment after the earlier section's reconstruction", async () => {
+    const file = await writeProbe("export const s = `\nhello\n`;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n-export const s = \`\n+export const s = "start";\n*** Update File: ${file}\n-hello\n+// added\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
   it("allows a net-neutral comment move via Move to", async () => {
     const file = await writeProbe("export const x = 1;\n// move me\n");
     const result = await runEdit("apply_patch", {

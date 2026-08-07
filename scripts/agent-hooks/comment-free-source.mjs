@@ -64,17 +64,18 @@ function patchReason(input, root) {
   if (command === undefined) {
     return;
   }
+  const reconstructions = new Map();
   for (const target of patchCodeTargets(command, root)) {
-    const reason = denyForPatchTarget(target, root);
+    const reason = denyForPatchTarget(target, root, reconstructions);
     if (reason) {
       return reason;
     }
   }
 }
 
-function denyForPatchTarget(target, root) {
+function denyForPatchTarget(target, root, reconstructions) {
   if (target.moveDest !== undefined) {
-    const sourcePreText = readTextIfExists(path.resolve(root, target.rel));
+    const sourcePreText = patchPreText(target.rel, root, reconstructions);
     const destPreText = readTextIfExists(path.resolve(root, target.moveDest));
     const postText = applyHunk(sourcePreText ?? "", target.hunk);
     return denyForAddedComments(target.moveDest, postText, [sourcePreText, destPreText]);
@@ -86,9 +87,18 @@ function denyForPatchTarget(target, root) {
       .join("\n");
     return denyForAddedComments(target.rel, postText, []);
   }
-  const preText = readTextIfExists(path.resolve(root, target.rel));
+  const preText = patchPreText(target.rel, root, reconstructions);
   const postText = applyHunk(preText ?? "", target.hunk);
+  reconstructions.set(target.rel, postText);
   return denyForAddedComments(target.rel, postText, [preText]);
+}
+
+function patchPreText(rel, root, reconstructions) {
+  const carried = reconstructions.get(rel);
+  if (carried !== undefined) {
+    return carried;
+  }
+  return readTextIfExists(path.resolve(root, rel));
 }
 
 function denyForAddedComments(rel, postText, preTexts) {

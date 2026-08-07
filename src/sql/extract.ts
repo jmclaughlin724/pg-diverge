@@ -92,7 +92,8 @@ const objectBuilders: Partial<Record<string, ObjectBuilder>> = {
   CreateSeqStmt: (node, statement, ordinal, file) =>
     singleRangeVarObject("sequence", node.sequence, statement, ordinal, file),
   CreateTableAsStmt: materializedViewObjects,
-  CreateTrigStmt: triggerObjects,
+  CreateTrigStmt: (node, statement, ordinal, file) =>
+    tableScopedObject("trigger", node.relation, node.trigname, statement, ordinal, file),
   GrantStmt: (node, statement, ordinal, file) =>
     grantObjectsFromAst(node, statement.text, ordinal, file),
   IndexStmt: indexObjects,
@@ -511,34 +512,6 @@ function materializedViewObjects(
         }),
       ]
     : undefined;
-}
-
-function triggerObjects(
-  node: AstNode,
-  statement: AstStatement,
-  ordinal: number,
-  file: string | undefined
-): SchemaObject[] | undefined {
-  const objects = tableScopedObject(
-    "trigger",
-    node.relation,
-    node.trigname,
-    statement,
-    ordinal,
-    file
-  );
-  if (!objects || objects.length === 0) {
-    return objects;
-  }
-  const triggerFunction = qualifiedName(node.funcname);
-  if (!triggerFunction) {
-    return objects;
-  }
-  const triggerFunctionIdentity = `${triggerFunction.schema ?? "public"}.${triggerFunction.name}`;
-  for (const object of objects) {
-    object.metadata.triggerFunction = triggerFunctionIdentity;
-  }
-  return objects;
 }
 
 function policyObjects(

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
-import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../../src/types.js";
+import { finalizeObjects } from "../../src/sql/facts.js";
+import { makeObject } from "../../src/sql/statements.js";
+import type { MigrationPlan, ObjectRef, SchemaModel, SupaschemaConfig } from "../../src/types.js";
 
 async function model(sql: string, source: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql);
@@ -21,6 +23,46 @@ async function diff(
   const from = await model(fromSql, "test:from");
   const to = await model(toSql, "test:to");
   return planSchemaDiff(from, to, config ? { config } : {});
+}
+
+async function catalogModel(
+  entries: { ref: ObjectRef; sql: string }[],
+  source: string
+): Promise<SchemaModel> {
+  const objects = entries.map((entry, index) => makeObject(entry.ref, entry.sql, index));
+  await finalizeObjects(objects, {});
+  return { diagnostics: [], fingerprint: source, objects, source };
+}
+
+function triggerAuditEntries(tablePersistence: "LOGGED" | "UNLOGGED"): {
+  ref: ObjectRef;
+  sql: string;
+}[] {
+  const tableSql =
+    tablePersistence === "UNLOGGED"
+      ? "CREATE UNLOGGED TABLE app.t1 (id bigint)"
+      : "CREATE TABLE app.t1 (id bigint)";
+  return [
+    { ref: { kind: "schema", name: "app" }, sql: "CREATE SCHEMA app" },
+    { ref: { kind: "table", name: "t1", schema: "app" }, sql: tableSql },
+    {
+      ref: { kind: "table", name: "t2", schema: "app" },
+      sql: "CREATE TABLE app.t2 (id bigint)",
+    },
+    {
+      ref: { kind: "function", name: "tf", schema: "app", signature: "" },
+      sql: `CREATE FUNCTION app.tf() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        PERFORM * FROM app.t1 WHERE id = NEW.id;
+        RETURN NEW;
+      END;
+      $$`,
+    },
+    {
+      ref: { kind: "trigger", name: "trg", schema: "app", table: "t2" },
+      sql: "CREATE TRIGGER trg AFTER INSERT ON app.t2 FOR EACH ROW EXECUTE FUNCTION app.tf()",
+    },
+  ];
 }
 
 describe("routine drop vs relation replace ordering", () => {
@@ -129,6 +171,26 @@ describe("routine drop vs relation replace ordering", () => {
     expect(dropTable).toBeGreaterThan(dropFunction);
     expect(createFunction).toBeGreaterThan(dropTable);
     expect(createTrigger).toBeGreaterThan(createFunction);
+  });
+
+  it("pre-drops a trigger whose function depends on a replaced relation in a catalog-sourced model", async () => {
+    const from = await catalogModel(triggerAuditEntries("LOGGED"), "test:from");
+    const to = await catalogModel(triggerAuditEntries("UNLOGGED"), "test:to");
+
+    const plan = planSchemaDiff(from, to, {
+      config: {
+        hints: { destructive: ["table:app.t1"] },
+        transactionMode: "per-statement",
+      },
+    });
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const keys = plan.operations.map((operation) => operation.key);
+    expect(keys).toContain("pre-drop:trigger:app.trg:t2");
+    expect(keys.indexOf("pre-drop:trigger:app.trg:t2")).toBeLessThan(
+      keys.indexOf("pre-drop:function:app.tf()")
+    );
+    expect(keys.indexOf("pre-drop:function:app.tf()")).toBeLessThan(keys.indexOf("table:app.t1"));
   });
 
   it("pre-drops a replaced trigger whose before-state function depends on a replaced relation", async () => {
