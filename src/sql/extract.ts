@@ -62,12 +62,14 @@ interface ParseStatementResult {
 
 type ConstraintNamesByTable = Map<string, Map<string, Set<string>>>;
 
+type MaybePromise<T> = T | Promise<T>;
+
 type ObjectBuilder = (
   node: AstNode,
   statement: AstStatement,
   ordinal: number,
   file: string | undefined
-) => SchemaObject[] | undefined;
+) => MaybePromise<SchemaObject[] | undefined>;
 
 const objectBuilders: Partial<Record<string, ObjectBuilder>> = {
   AlterDefaultPrivilegesStmt: defaultPrivilegeObjects,
@@ -127,7 +129,7 @@ export async function extractObjectsFromSql(
     if (statement.text.length === 0 || ignoredStatementTags.has(statement.tag)) {
       continue;
     }
-    const parsed = parseStatement(statement, ordinal, config, options.file, constraintNames);
+    const parsed = await parseStatement(statement, ordinal, config, options.file, constraintNames);
     diagnostics.push(...parsed.diagnostics);
     if (parsed.objects.length > 0) {
       diagnostics.push(
@@ -146,13 +148,13 @@ export async function extractObjectsFromSql(
   };
 }
 
-function parseStatement(
+async function parseStatement(
   statement: AstStatement,
   ordinal: number,
   config: SupaschemaConfig,
   file: string | undefined,
   constraintNames: ConstraintNamesByTable
-): ParseStatementResult {
+): Promise<ParseStatementResult> {
   const node = asRecord(statement.node[statement.tag]) ?? {};
   if (statement.tag === "DoStmt" && classifyDoBlock(node) === "idempotent-role") {
     return { diagnostics: [], objects: [] };
@@ -194,7 +196,7 @@ function parseStatement(
       objects: [],
     };
   }
-  const objects = buildObjects(statement, ordinal, file, constraintNames);
+  const objects = await buildObjects(statement, ordinal, file, constraintNames);
   if (objects === undefined) {
     const head = statement.text.split("\n", 1)[0]?.slice(0, 100) ?? "";
     return {
@@ -237,12 +239,12 @@ function parseStatement(
   };
 }
 
-function buildObjects(
+async function buildObjects(
   statement: AstStatement,
   ordinal: number,
   file: string | undefined,
   constraintNames: ConstraintNamesByTable
-): SchemaObject[] | undefined {
+): Promise<SchemaObject[] | undefined> {
   const node = asRecord(statement.node[statement.tag]);
   if (!node) {
     return;
@@ -258,7 +260,7 @@ function buildObjects(
   if (statement.tag === "AlterTableStmt") {
     return alterTableObjects(node, statement.text, ordinal, file, existingNames);
   }
-  return objectBuilders[statement.tag]?.(node, statement, ordinal, file);
+  return await objectBuilders[statement.tag]?.(node, statement, ordinal, file);
 }
 
 function schemaObjects(
@@ -557,13 +559,13 @@ function defaultPrivilegeObjects(
   return defaultPrivilegesFromAst(node, statement.text, ordinal, file);
 }
 
-function commentObjects(
+async function commentObjects(
   node: AstNode,
   statement: AstStatement,
   ordinal: number,
   file: string | undefined
-): SchemaObject[] | undefined {
-  const object = commentObjectFromAst(node, statement.text, ordinal, file);
+): Promise<SchemaObject[] | undefined> {
+  const object = await commentObjectFromAst(node, statement.text, ordinal, file);
   if (!object) {
     return;
   }

@@ -67,7 +67,7 @@ describe("doctor readiness", () => {
 
     expect(report.checks).toContainEqual(
       expect.objectContaining({
-        detail: expect.stringContaining("AST 170007"),
+        detail: expect.stringContaining("AST 180004"),
         name: "sql parser",
         status: "pass",
       })

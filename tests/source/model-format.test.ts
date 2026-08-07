@@ -6,8 +6,8 @@ import { MODEL_FORMAT_VERSION } from "../../src/hash.js";
 import { extractSourceModel } from "../../src/source/extract.js";
 
 describe("model format versioning", () => {
-  it("uses model format version 5 for structured grant identity", () => {
-    expect(MODEL_FORMAT_VERSION).toBe(6);
+  it("pins the current model format version", () => {
+    expect(MODEL_FORMAT_VERSION).toBe(7);
   });
 
   it("stamps extracted models with the current format version", async () => {

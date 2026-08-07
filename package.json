@@ -131,7 +131,7 @@
   },
   "dependencies": {
     "commander": "^15.0.0",
-    "libpg-query": "17.7.4",
+    "libpg-query": "18.1.4",
     "pg": "^8.21.0",
     "pgsql-deparser": "^18.3.3",
     "typescript": "npm:@typescript/typescript6@6.0.2",
