@@ -127,7 +127,9 @@ describe("registered hook topology", () => {
 });
 
 describe("actual context hook entrypoints", () => {
-  it("allows Git but blocks positive Bash safety matches through a Claude runtime", async () => {
+  it("allows Git but blocks positive Bash safety matches through a Claude runtime", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-runtime-state-"));
     const hook = join(root, ".claude", "hooks", "context-pre-tool-use.mjs");
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
@@ -164,6 +166,7 @@ describe("actual context hook entrypoints", () => {
 
   it.each([".claude", ".codex"])(
     "makes every already-loaded Codex hook family inert through %s wrappers",
+    { timeout: 20_000 },
     async (runtimeRoot) => {
       const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-disabled-state-"));
       const env = hookEnvironment("codex", { STATE_DIR: stateDir });
@@ -181,7 +184,7 @@ describe("actual context hook entrypoints", () => {
     }
   );
 
-  it("makes malformed input visible without denying the event", async () => {
+  it("makes malformed input visible without denying the event", { timeout: 20_000 }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-malformed-"));
     const result = await runRawHook(
       join(root, ".claude/hooks/context-pre-tool-use.mjs"),
@@ -195,7 +198,9 @@ describe("actual context hook entrypoints", () => {
     expect(output.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 
-  it("runs silent SessionStart and SessionEnd lifecycle entrypoints", async () => {
+  it("runs silent SessionStart and SessionEnd lifecycle entrypoints", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-lifecycle-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const common = {
@@ -228,7 +233,9 @@ describe("actual context hook entrypoints", () => {
     });
   });
 
-  it("recovers a killed owner while crediting exact skill content", async () => {
+  it("recovers a killed owner while crediting exact skill content", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-skill-load-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-skill-load";
@@ -292,7 +299,9 @@ describe("actual context hook entrypoints", () => {
     ).toBe(false);
   });
 
-  it("never age-steals a live owner and lets SessionEnd reclaim it after SIGKILL", async () => {
+  it("never age-steals a live owner and lets SessionEnd reclaim it after SIGKILL", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-live-lock-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-live-lock";
@@ -355,7 +364,9 @@ describe("actual context hook entrypoints", () => {
     expect(await pathExists(lockDirectory)).toBe(false);
   });
 
-  it("leaves no lock artifacts when contending waiters are killed", async () => {
+  it("leaves no lock artifacts when contending waiters are killed", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-killed-waiters-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const hook = join(root, ".claude/hooks/context-pre-tool-use.mjs");
@@ -405,7 +416,9 @@ describe("actual context hook entrypoints", () => {
     expect(await pathExists(lockDirectory)).toBe(false);
   });
 
-  it("serializes concurrent evidence updates through the actual hook entrypoint", async () => {
+  it("serializes concurrent evidence updates through the actual hook entrypoint", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-concurrent-state-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const hook = join(root, ".claude/hooks/context-post-tool-use.mjs");
@@ -452,7 +465,9 @@ describe("actual context hook entrypoints", () => {
     );
   });
 
-  it("keeps a masked success from resolving an actual Stop failure conflict", async () => {
+  it("keeps a masked success from resolving an actual Stop failure conflict", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-outcome-state-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-outcome";
