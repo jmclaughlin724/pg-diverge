@@ -121,6 +121,7 @@ interface StatementOrderFacts {
   columnReferences: Set<string>;
   createdColumns: Set<string>;
   createdRelations: Set<string>;
+  droppedColumns: Set<string>;
   droppedRelations: Set<string>;
   references: Set<string>;
   statement: AstStatement;
@@ -139,6 +140,7 @@ async function forwardReferenceOrderDiagnostics(
       columnReferences: new Set(dependencies.columnReferences),
       createdColumns: createdColumnIdentities(statement),
       createdRelations: createdRelationIdentities(statement),
+      droppedColumns: droppedColumnIdentities(statement),
       droppedRelations: droppedRelationIdentities(statement),
       references: new Set(dependencies.references),
       statement,
@@ -151,8 +153,13 @@ async function forwardReferenceOrderDiagnostics(
     if (!current) {
       continue;
     }
-    removeAll(laterRelations, current.droppedRelations);
-    removeColumnsForRelations(laterColumns, current.droppedRelations, (relation, identity) =>
+    const presentDrops = new Set(
+      [...current.droppedRelations].filter((relation) =>
+        relationPresentBeforeDrop(facts, index, relation)
+      )
+    );
+    removeAll(laterRelations, presentDrops);
+    removeColumnsForRelations(laterColumns, presentDrops, (relation, identity) =>
       columnExistedBeforeDrop(facts, index, relation, identity)
     );
     const forwardRelations = [...current.references].filter((reference) =>
@@ -267,6 +274,29 @@ function createdColumnIdentities(statement: AstStatement): Set<string> {
   return identities;
 }
 
+function droppedColumnIdentities(statement: AstStatement): Set<string> {
+  const node = asRecord(statement.node[statement.tag]);
+  const identities = new Set<string>();
+  if (!node || statement.tag !== "AlterTableStmt") {
+    return identities;
+  }
+  const relation = relationIdentity(node.relation);
+  if (!relation) {
+    return identities;
+  }
+  for (const item of readArray(node.cmds)) {
+    const command = asRecord(asRecord(item)?.AlterTableCmd);
+    if (readString(command?.subtype) !== "AT_DropColumn") {
+      continue;
+    }
+    const name = readString(command?.name);
+    if (name) {
+      identities.add(`${relation}.${name}`);
+    }
+  }
+  return identities;
+}
+
 function addRangeVarIdentity(into: Set<string>, value: unknown): void {
   const identity = relationIdentity(value);
   if (identity) {
@@ -335,6 +365,26 @@ function removeColumnsForRelations(
   }
 }
 
+function relationPresentBeforeDrop(
+  facts: readonly StatementOrderFacts[],
+  dropIndex: number,
+  relation: string
+): boolean {
+  for (let index = dropIndex - 1; index >= 0; index -= 1) {
+    const fact = facts[index];
+    if (!fact) {
+      continue;
+    }
+    if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.createdRelations.has(relation)) {
+      return true;
+    }
+  }
+  return true;
+}
+
 function columnExistedBeforeDrop(
   facts: readonly StatementOrderFacts[],
   dropIndex: number,
@@ -347,6 +397,9 @@ function columnExistedBeforeDrop(
       continue;
     }
     if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.droppedColumns.has(identity)) {
       return false;
     }
     if (fact.createdColumns.has(identity)) {

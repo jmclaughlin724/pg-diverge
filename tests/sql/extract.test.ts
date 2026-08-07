@@ -1255,6 +1255,44 @@ AS $function$ SELECT 1 $function$`,
     expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_FORWARD_REFERENCE_ORDER");
   });
 
+  it("rejects references when an earlier drop already removed the relation", async () => {
+    const diagnostics = await checkMigrationSql(`
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT * FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t");
+  });
+
+  it("rejects references to a column dropped again before the recreate", async () => {
+    const diagnostics = await checkMigrationSql(`
+      ALTER TABLE app.t ADD COLUMN new_col int;
+
+      ALTER TABLE app.t DROP COLUMN new_col;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE IF NOT EXISTS app.t (new_col int);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
   it("reports unknown configured validators", async () => {
     const diagnostics = await checkMigrationSql("CREATE SCHEMA IF NOT EXISTS app;", {
       config: { validators: ["internal-parser", "definitely-not-real"] },
