@@ -1227,6 +1227,22 @@ AS $function$ SELECT 1 $function$`,
     expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
   });
 
+  it("rejects references to a column introduced only by a recreated foreign table", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.ft;
+
+      DROP FOREIGN TABLE IF EXISTS app.ft;
+
+      CREATE FOREIGN TABLE IF NOT EXISTS app.ft (new_col int) SERVER app_server;
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.ft.new_col");
+  });
+
   it("allows references to a column created before the drop across a recreate", async () => {
     const diagnostics = await checkMigrationSql(`
       ALTER TABLE app.t ADD COLUMN new_col int;

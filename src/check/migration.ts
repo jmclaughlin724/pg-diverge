@@ -245,14 +245,15 @@ function createdColumnIdentities(statement: AstStatement): Set<string> {
   }
   if (statement.tag === "CreateStmt") {
     const relation = relationIdentity(node.relation);
-    if (!relation) {
-      return identities;
+    if (relation) {
+      addTableColumnFacts(identities, relation, node.tableElts);
     }
-    for (const item of readArray(node.tableElts)) {
-      const facts = columnFacts(asRecord(item));
-      if (facts) {
-        identities.add(`${relation}.${facts.name}`);
-      }
+  }
+  if (statement.tag === "CreateForeignTableStmt") {
+    const base = asRecord(node.base) ?? node;
+    const relation = relationIdentity(base.relation);
+    if (relation) {
+      addTableColumnFacts(identities, relation, base.tableElts);
     }
   }
   if (statement.tag === "AlterTableStmt") {
@@ -272,6 +273,15 @@ function createdColumnIdentities(statement: AstStatement): Set<string> {
     }
   }
   return identities;
+}
+
+function addTableColumnFacts(identities: Set<string>, relation: string, tableElts: unknown): void {
+  for (const item of readArray(tableElts)) {
+    const facts = columnFacts(asRecord(item));
+    if (facts) {
+      identities.add(`${relation}.${facts.name}`);
+    }
+  }
 }
 
 function droppedColumnIdentities(statement: AstStatement): Set<string> {
