@@ -157,7 +157,13 @@ function applyHunk(preText, hunk) {
   let preIndex = 0;
 
   for (const operation of hunk) {
-    if (operation.kind === "context" || operation.kind === "remove") {
+    if (operation.kind === "anchor") {
+      const anchored = findAnchor(preLines, operation.line, preIndex);
+      if (anchored >= 0) {
+        postLines.push(...preLines.slice(preIndex, anchored + 1));
+        preIndex = anchored + 1;
+      }
+    } else if (operation.kind === "context" || operation.kind === "remove") {
       const found = findLine(preLines, operation.line, preIndex);
       if (found >= 0) {
         postLines.push(
@@ -181,6 +187,24 @@ function findLine(lines, line, startIndex) {
   }
   const stripped = line.startsWith(" ") ? line.slice(1) : line;
   return stripped === line ? -1 : lines.indexOf(stripped, startIndex);
+}
+
+function findAnchor(lines, anchor, startIndex) {
+  for (let index = startIndex; index < lines.length; index += 1) {
+    if (lines[index].trim() === anchor) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function anchorText(line) {
+  const rest = line.slice(2).trim();
+  const closing = rest.indexOf("@@");
+  if (closing >= 0 && rest.slice(0, closing).trim().length > 0) {
+    return rest.slice(closing + 2).trim();
+  }
+  return rest;
 }
 
 function patchCodeTargets(command, root) {
@@ -210,16 +234,30 @@ function patchCodeTargets(command, root) {
     if (current === undefined) {
       continue;
     }
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      current.hunk.push({ kind: "add", line: line.slice(1) });
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
-      current.hunk.push({ kind: "remove", line: line.slice(1) });
-    } else if (!current.isAddFile) {
-      current.hunk.push({ kind: "context", line });
+    const operation = hunkOperation(line, current.isAddFile);
+    if (operation !== undefined) {
+      current.hunk.push(operation);
     }
   }
   flush();
   return targets.filter((target) => isJsTsCodeFile(target.moveDest ?? target.rel));
+}
+
+function hunkOperation(line, isAddFile) {
+  if (line.startsWith("+") && !line.startsWith("+++")) {
+    return { kind: "add", line: line.slice(1) };
+  }
+  if (line.startsWith("-") && !line.startsWith("---")) {
+    return { kind: "remove", line: line.slice(1) };
+  }
+  if (isAddFile) {
+    return;
+  }
+  if (line.startsWith("@@")) {
+    const anchor = anchorText(line);
+    return anchor.length > 0 ? { kind: "anchor", line: anchor } : undefined;
+  }
+  return { kind: "context", line };
 }
 
 function patchHeader(line, root) {

@@ -152,7 +152,9 @@ async function forwardReferenceOrderDiagnostics(
       continue;
     }
     removeAll(laterRelations, current.droppedRelations);
-    removeColumnsForRelations(laterColumns, current.droppedRelations);
+    removeColumnsForRelations(laterColumns, current.droppedRelations, (relation, identity) =>
+      columnExistedBeforeDrop(facts, index, relation, identity)
+    );
     const forwardRelations = [...current.references].filter((reference) =>
       laterRelations.has(reference)
     );
@@ -315,15 +317,43 @@ function removeAll<T>(from: Set<T>, values: Iterable<T>): void {
   }
 }
 
-function removeColumnsForRelations(columns: Set<string>, relations: ReadonlySet<string>): void {
+function removeColumnsForRelations(
+  columns: Set<string>,
+  relations: ReadonlySet<string>,
+  existedBeforeDrop: (relation: string, identity: string) => boolean
+): void {
   for (const identity of [...columns]) {
     for (const relation of relations) {
-      if (identity.startsWith(`${relation}.`)) {
-        columns.delete(identity);
-        break;
+      if (!identity.startsWith(`${relation}.`)) {
+        continue;
       }
+      if (existedBeforeDrop(relation, identity)) {
+        columns.delete(identity);
+      }
+      break;
     }
   }
+}
+
+function columnExistedBeforeDrop(
+  facts: readonly StatementOrderFacts[],
+  dropIndex: number,
+  relation: string,
+  identity: string
+): boolean {
+  for (let index = dropIndex - 1; index >= 0; index -= 1) {
+    const fact = facts[index];
+    if (!fact) {
+      continue;
+    }
+    if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.createdColumns.has(identity)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function functionPublicExecuteDiagnostics(statements: readonly AstStatement[]): Diagnostic[] {

@@ -684,6 +684,16 @@ describe("comment-free source write-time enforcement", () => {
     expect(decision(result.stdout).decision).toBeUndefined();
   });
 
+  it("denies an @@-anchored apply_patch add of a comment at the later duplicate context line", async () => {
+    const file = await writeProbe(
+      "export const s = `\n  doThing();\n`;\nfunction main() {\n  doThing();\n  otherThing();\n}\n"
+    );
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n@@ function main() {\n   doThing();\n+// anchored\n   otherThing();\n }\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
   it("allows a net-neutral comment move via Move to", async () => {
     const file = await writeProbe("export const x = 1;\n// move me\n");
     const result = await runEdit("apply_patch", {

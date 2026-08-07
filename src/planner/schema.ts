@@ -529,6 +529,7 @@ function appendChangedColumnBlockingDependents(
     affectedRefs: new Map(),
     dependencyIdentities: new Set(),
     fromKeys: new Set(from.objects.map((object) => object.key)),
+    fromByKey,
     operationKeys: new Set(operations.map((operation) => operation.key)),
   };
   for (const tableOperation of operations) {
@@ -596,7 +597,7 @@ function appendChangedColumnBlockingDependent(
   }
   const before = fromByKey.get(object.key);
   const directlyAffected = before !== undefined && dependsOnAnyColumn(before, changedColumns);
-  if (!(directlyAffected || isAffectedDependent(object, context.dependencyIdentities))) {
+  if (!(directlyAffected || isAffectedDependent(object, context.dependencyIdentities, fromByKey))) {
     return false;
   }
   let changed = false;
@@ -704,6 +705,7 @@ function appendReplacedObjectDependents(
 interface ReplacedDependentContext {
   affectedRefs: Map<string, ObjectRef>;
   dependencyIdentities: Set<string>;
+  fromByKey: ReadonlyMap<string, SchemaObject>;
   fromKeys: Set<string>;
   operationKeys: Set<string>;
 }
@@ -725,6 +727,7 @@ function replacedDependentContext(
     affectedRefs: new Map(),
     dependencyIdentities: new Set(),
     fromKeys: new Set(from.objects.map((object) => object.key)),
+    fromByKey: new Map(from.objects.map((object) => [object.key, object])),
     operationKeys: new Set(operations.map((operation) => operation.key)),
   };
   for (const object of replacedObjects) {
@@ -759,7 +762,7 @@ function appendAffectedDependent(
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  if (!isAffectedDependent(object, context.dependencyIdentities)) {
+  if (!isAffectedDependent(object, context.dependencyIdentities, context.fromByKey)) {
     return false;
   }
   let changed = false;
@@ -788,7 +791,7 @@ function appendBlockingDependentPreDrop(
     !(
       blockingObjectDependentKinds.has(object.ref.kind) ||
       isCrossTableRelationDependent(object, context.dependencyIdentities) ||
-      isTriggerDependentOnAffectedRoutine(object, context.dependencyIdentities)
+      isTriggerDependentOnAffectedRoutine(object, context.dependencyIdentities, context.fromByKey)
     )
   ) {
     return false;
@@ -809,13 +812,17 @@ function appendBlockingDependentPreDrop(
 
 function isTriggerDependentOnAffectedRoutine(
   object: SchemaObject,
-  dependencyIdentities: ReadonlySet<string>
+  dependencyIdentities: ReadonlySet<string>,
+  fromByKey: ReadonlyMap<string, SchemaObject>
 ): boolean {
   if (object.ref.kind !== "trigger") {
     return false;
   }
-  const triggerFunction = object.metadata.triggerFunction;
-  return typeof triggerFunction === "string" && dependencyIdentities.has(triggerFunction);
+  const candidates = [object, fromByKey.get(object.key)];
+  return candidates.some((candidate) => {
+    const triggerFunction = candidate?.metadata.triggerFunction;
+    return typeof triggerFunction === "string" && dependencyIdentities.has(triggerFunction);
+  });
 }
 
 function markPreDroppedReplacement(key: string, operations: MigrationOperation[]): void {
@@ -855,7 +862,11 @@ function appendAffectedComments(
   }
 }
 
-function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<string>): boolean {
+function isAffectedDependent(
+  object: SchemaObject,
+  dependencyIdentities: Set<string>,
+  fromByKey: ReadonlyMap<string, SchemaObject>
+): boolean {
   const tableIdentity = tableRefIdentity(object.ref);
   if (
     relationDependentKinds.has(object.ref.kind) &&
@@ -873,7 +884,7 @@ function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<str
   if (isCrossTableRelationDependent(object, dependencyIdentities)) {
     return true;
   }
-  if (isTriggerDependentOnAffectedRoutine(object, dependencyIdentities)) {
+  if (isTriggerDependentOnAffectedRoutine(object, dependencyIdentities, fromByKey)) {
     return true;
   }
   return (
