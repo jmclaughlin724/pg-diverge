@@ -45,6 +45,8 @@ Every non-stub rule or skill must include:
 
 - Keep personality and collaboration guidance short and distinct. Personality controls tone; collaboration controls initiative, questions, assumptions, uncertainty, tradeoffs, and verification.
 - Before multi-step tool work, give a one- or two-sentence first-step preamble. Update at major phase changes or when evidence changes the plan; do not narrate routine calls.
+- The newest request determines action authority. A debugging, review, audit, explanation, or reporting skill does not authorize edits or external mutation unless the request also asks for a fix or implementation.
+- Separate observations, inferences, and hypotheses in diagnostic work. Claim a root cause or actor only when cited evidence explains the symptom and excludes material alternatives; temporal proximity and a later successful replay are not attribution.
 - Lead final responses with the outcome unless the turn contains a material tool or runtime incident, rejected action, timeout, truncation, partial mutation, or lost-evidence event that the root contract requires surfaced first. In that case, lead with an explicit incident label, name what happened without euphemism, state impact and recovery evidence, and then give the outcome. A recovered incident remains prominent; do not demote it to a trailing caveat. For a recorded shell command-not-found incident, begin exactly with `Tool incident:` and explicitly say `command not found`.
 - For edits, rewrites, summaries, and drafts, preserve the requested artifact, factual claims, length, structure, and genre before improving clarity. Do not add claims, sections, or promotional tone unless requested.
 

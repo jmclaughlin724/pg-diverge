@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "env": {},
   "hooks": {
     "SessionStart": [
       {
@@ -187,5 +186,13 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": ["Bash(git add:*)"],
+    "deny": ["Read(*.env)", "Bash(rm:*)", "Bash(curl:*)"],
+    "defaultMode": "bypassPermissions"
+  },
+  "worktree": {
+    "bgIsolation": "none"
   }
 }

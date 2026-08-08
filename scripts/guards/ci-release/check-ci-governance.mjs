@@ -70,11 +70,12 @@ const HARDEN_RUNNER_ENDPOINTS = [
   "api.github.com:443",
   "fulcio.sigstore.dev:443",
   "github.com:443",
-  "npm.pkg.github.com:443",
   "registry.npmjs.org:443",
   "rekor.sigstore.dev:443",
   "tuf-repo-cdn.sigstore.dev:443",
 ];
+
+const GITHUB_PACKAGES_ENDPOINTS = ["npm.pkg.github.com:443"];
 
 const RELEASE_ASSET_CDN_ENDPOINTS = [
   "objects.githubusercontent.com:443",
@@ -124,7 +125,7 @@ function assertReleaseConditionals(release, publishJob) {
   );
 }
 
-function assertReleasePublicationOrder(publishJob) {
+export function assertReleasePublicationOrder(publishJob) {
   const publishIndex = (publishJob.steps ?? []).findIndex(
     (step) => stepRun(step) === 'npm publish "$SUPASCHEMA_TARBALL" --access public --provenance'
   );
@@ -138,12 +139,14 @@ function assertReleasePublicationOrder(publishJob) {
     (step) => stepName(step) === "Create GitHub release"
   );
   assert(
-    publishIndex >= 0 && attestIndex > publishIndex,
+    publishIndex >= 0 && attestIndex === publishIndex + 1,
     "release.yml must attest the published tarball immediately after npm publish"
   );
   assert(
-    prepareReleaseNotesIndex > attestIndex && createReleaseIndex > prepareReleaseNotesIndex,
-    "release.yml must create the GitHub Release after npm publish/provenance attestation"
+    prepareReleaseNotesIndex >= 0 &&
+      prepareReleaseNotesIndex < publishIndex &&
+      createReleaseIndex > attestIndex,
+    "release.yml must prepare GitHub release notes before external publication and create the GitHub Release after npm provenance attestation"
   );
 }
 
@@ -225,7 +228,7 @@ function assertReleaseYaml(parsed) {
     "release.yml publish job must not configure a DB URL"
   );
   assert(!publishJob.services, "release.yml publish job must not start database services");
-  assertHardenRunnerBaseline("release.yml publish job", publishJob);
+  assertHardenRunnerBaseline("release.yml publish job", publishJob, GITHUB_PACKAGES_ENDPOINTS);
   const checkoutStep = (publishJob.steps ?? []).find(
     (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
   );
@@ -298,21 +301,30 @@ function assertReleaseYaml(parsed) {
   );
 }
 
-function assertSnapshotJob(parsed) {
+export function assertSnapshotJob(parsed) {
   const release = parsed.get("release.yml");
   const snapshotJob = release.doc?.jobs?.["publish-next"];
   assert(
     snapshotJob,
     "release.yml must own the publish-next snapshot job; npm trusted publishing accepts one workflow per package and the registration names release.yml, so a separate workflow's OIDC token is rejected"
   );
-  const snapshotIf = String(snapshotJob.if ?? "");
+  const snapshotIf = String(snapshotJob.if ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+  const expectedSnapshotIf = [
+    "${{",
+    " !cancelled() && github.event_name == 'push' && needs.preflight.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') ",
+    "}}",
+  ].join("");
   assert(
-    snapshotIf.includes("always()") && snapshotIf.includes("github.event_name == 'push'"),
-    "release.yml publish-next must run on every main push (never on workflow_dispatch repair) even when the stable publish job is skipped"
+    snapshotIf === expectedSnapshotIf,
+    "release.yml publish-next must run only for main pushes after successful preflight and a successful or intentionally skipped stable publish, and must fail closed on failure or cancellation"
   );
   assert(
-    asArray(snapshotJob.needs).includes("publish"),
-    "release.yml publish-next must need the publish job so the next-tag publish never races the stable npm publish"
+    JSON.stringify(asArray(snapshotJob.needs)) === JSON.stringify(["preflight", "publish"]),
+    "release.yml publish-next must need preflight and publish so the next-tag publish cannot bypass or race the stable release transaction"
   );
   assert(
     snapshotJob.environment === "release",
@@ -350,6 +362,18 @@ function assertSnapshotJob(parsed) {
     String(step?.run ?? "").includes("node scripts/release/snapshot-version.mjs")
   );
   const buildIndex = steps.findIndex((step) => String(step?.run ?? "").includes("npm run build"));
+  const publishIndex = steps.findIndex(
+    (step) =>
+      stepRun(step) === 'npm publish "$SUPASCHEMA_TARBALL" --access public --provenance --tag next'
+  );
+  const attestIndex = steps.findIndex((step) => stepActionName(step) === "actions/attest");
+  const preparePackageManagersIndex = steps.findIndex(
+    (step) => stepName(step) === "Prepare alternative package managers"
+  );
+  const setupBunIndex = steps.findIndex(
+    (step) => stepName(step) === "Install Bun for registry smoke"
+  );
+  const setupBunStep = steps[setupBunIndex];
   assert(
     stampIndex >= 0 && buildIndex > stampIndex,
     "release.yml publish-next must stamp the snapshot version before npm run build so dist/build-info.json carries it"
@@ -359,6 +383,22 @@ function assertSnapshotJob(parsed) {
       (run) => run === 'npm publish "$SUPASCHEMA_TARBALL" --access public --provenance --tag next'
     ),
     "release.yml publish-next must publish the smoked tarball with explicit `npm publish --tag next`"
+  );
+  assert(
+    preparePackageManagersIndex >= 0 &&
+      preparePackageManagersIndex < publishIndex &&
+      setupBunIndex >= 0 &&
+      setupBunIndex < publishIndex,
+    "release.yml publish-next must prepare every registry-smoke package manager before external publication"
+  );
+  assert(
+    stepActionName(setupBunStep) === "oven-sh/setup-bun" &&
+      String(setupBunStep?.with?.["bun-version"]) === "1.3.14",
+    "release.yml publish-next must install pinned Bun 1.3.14 before publication"
+  );
+  assert(
+    publishIndex >= 0 && attestIndex === publishIndex + 1,
+    "release.yml publish-next must attest the published tarball immediately after npm publish"
   );
   assert(
     !stepRuns.some((run) => run.includes("--tag latest")),
@@ -375,14 +415,15 @@ function assertSnapshotJob(parsed) {
   const registrySmokeStep = steps.find((step) =>
     String(step?.run ?? "").includes("node scripts/release/registry-smoke.mjs")
   );
+  const registrySmokeIndex = steps.indexOf(registrySmokeStep);
   const immutableSnapshotSpec = ["supaschema@$", "{{ steps.snapshot.outputs.version }}"].join("");
   assert(
     registrySmokeStep?.env?.SUPASCHEMA_REGISTRY_SMOKE_SPEC === immutableSnapshotSpec,
     "release.yml publish-next must registry-smoke the immutable version emitted by the stamp step"
   );
   assert(
-    steps.some((step) => stepActionName(step) === "actions/attest"),
-    "release.yml publish-next must use actions/attest@v4 for tarball provenance attestation"
+    registrySmokeIndex > attestIndex,
+    "release.yml publish-next must registry-smoke only after publication and provenance attestation"
   );
 }
 
