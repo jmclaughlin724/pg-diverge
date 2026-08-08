@@ -65,6 +65,39 @@ function assertWorkflowBasics(parsed, allowedActionPatterns) {
   }
 }
 
+const HARDEN_RUNNER_ENDPOINTS = [
+  "*.actions.githubusercontent.com:443",
+  "api.github.com:443",
+  "fulcio.sigstore.dev:443",
+  "github.com:443",
+  "npm.pkg.github.com:443",
+  "registry.npmjs.org:443",
+  "rekor.sigstore.dev:443",
+  "tuf-repo-cdn.sigstore.dev:443",
+];
+
+function assertHardenRunnerBaseline(jobLabel, job) {
+  const hardenRunnerStep = (job.steps ?? []).find(
+    (step) => typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
+  );
+  assert(hardenRunnerStep, `${jobLabel} must run step-security/harden-runner`);
+  const allowedEndpointsValue = String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "").trim();
+  assert(
+    !allowedEndpointsValue.includes("\n"),
+    `${jobLabel} harden-runner endpoints must use a folded YAML scalar so the agent receives space-separated tokens`
+  );
+  const allowedEndpoints = allowedEndpointsValue
+    .split(" ")
+    .map((endpoint) => endpoint.trim())
+    .filter(Boolean);
+  assert(
+    hardenRunnerStep.with?.["egress-policy"] === "block" &&
+      HARDEN_RUNNER_ENDPOINTS.length === allowedEndpoints.length &&
+      HARDEN_RUNNER_ENDPOINTS.every((endpoint) => allowedEndpoints.includes(endpoint)),
+    `${jobLabel} must enforce the reviewed egress endpoint allow-list`
+  );
+}
+
 function assertReleaseConditionals(release, publishJob) {
   assert(
     !release.raw.includes("env.SUPASCHEMA_RELEASE_SHOULD_"),
@@ -157,14 +190,9 @@ function assertReleaseYaml(parsed) {
     ),
     "release.yml read-only preflight job must run release preflight"
   );
-  const publishJob = Object.values(release.doc?.jobs ?? {}).find(
-    (job) =>
-      job?.permissions &&
-      typeof job.permissions === "object" &&
-      job.permissions["id-token"] === "write"
-  );
+  const publishJob = release.doc?.jobs?.publish;
   assert(
-    publishJob,
+    publishJob?.permissions?.["id-token"] === "write",
     "release.yml must have a publish job with id-token: write (OIDC trusted publishing)"
   );
   const publishIf = String(publishJob.if ?? "");
@@ -191,35 +219,7 @@ function assertReleaseYaml(parsed) {
     "release.yml publish job must not configure a DB URL"
   );
   assert(!publishJob.services, "release.yml publish job must not start database services");
-  const hardenRunnerStep = (publishJob.steps ?? []).find(
-    (step) => typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
-  );
-  assert(hardenRunnerStep, "release.yml publish job must run step-security/harden-runner");
-  const requiredEndpoints = [
-    "*.actions.githubusercontent.com:443",
-    "api.github.com:443",
-    "fulcio.sigstore.dev:443",
-    "github.com:443",
-    "npm.pkg.github.com:443",
-    "registry.npmjs.org:443",
-    "rekor.sigstore.dev:443",
-    "tuf-repo-cdn.sigstore.dev:443",
-  ];
-  const allowedEndpointsValue = String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "").trim();
-  assert(
-    !allowedEndpointsValue.includes("\n"),
-    "release.yml harden-runner endpoints must use a folded YAML scalar so the agent receives space-separated tokens"
-  );
-  const allowedEndpoints = allowedEndpointsValue
-    .split(" ")
-    .map((endpoint) => endpoint.trim())
-    .filter(Boolean);
-  assert(
-    hardenRunnerStep.with?.["egress-policy"] === "block" &&
-      requiredEndpoints.length === allowedEndpoints.length &&
-      requiredEndpoints.every((endpoint) => allowedEndpoints.includes(endpoint)),
-    "release.yml privileged job must enforce the reviewed egress endpoint allow-list"
-  );
+  assertHardenRunnerBaseline("release.yml publish job", publishJob);
   const checkoutStep = (publishJob.steps ?? []).find(
     (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
   );
@@ -292,73 +292,75 @@ function assertReleaseYaml(parsed) {
   );
 }
 
-function assertSnapshotYaml(parsed) {
-  const snapshot = parsed.get("snapshot.yml");
-  assert(snapshot, "snapshot.yml must exist");
-  const snapshotOn = snapshot.doc?.on ?? {};
+function assertSnapshotJob(parsed) {
+  const release = parsed.get("release.yml");
+  const snapshotJob = release.doc?.jobs?.["publish-next"];
   assert(
-    !(snapshotOn.release || snapshotOn.workflow_run),
-    "snapshot.yml must publish only from protected main pushes, not release events or workflow_run"
+    snapshotJob,
+    "release.yml must own the publish-next snapshot job; npm trusted publishing accepts one workflow per package and the registration names release.yml, so a separate workflow's OIDC token is rejected"
   );
+  const snapshotIf = String(snapshotJob.if ?? "");
   assert(
-    asArray(snapshotOn.push?.branches).includes("main"),
-    "snapshot.yml push trigger must be scoped to main"
-  );
-  assert(
-    snapshot.doc?.concurrency?.group === "snapshot-npm" &&
-      snapshot.doc.concurrency.queue === "max" &&
-      snapshot.doc.concurrency["cancel-in-progress"] !== true,
-    "snapshot.yml must queue snapshot publishes with concurrency group snapshot-npm and queue: max"
-  );
-  const publishJob = Object.values(snapshot.doc?.jobs ?? {}).find(
-    (job) =>
-      job?.permissions &&
-      typeof job.permissions === "object" &&
-      job.permissions["id-token"] === "write"
+    snapshotIf.includes("always()") && snapshotIf.includes("github.event_name == 'push'"),
+    "release.yml publish-next must run on every main push (never on workflow_dispatch repair) even when the stable publish job is skipped"
   );
   assert(
-    publishJob,
-    "snapshot.yml must have a publish job with id-token: write (OIDC trusted publishing)"
+    asArray(snapshotJob.needs).includes("publish"),
+    "release.yml publish-next must need the publish job so the next-tag publish never races the stable npm publish"
   );
   assert(
-    publishJob.environment === "release",
-    "snapshot.yml publish job must run in the release environment so OIDC stays main-gated"
+    snapshotJob.environment === "release",
+    "release.yml publish-next job must run in the release environment so OIDC stays main-gated"
   );
   assert(
-    publishJob.permissions?.contents === "read",
-    "snapshot.yml publish job must not grant contents: write; snapshots create no releases or tags"
+    snapshotJob.permissions?.["id-token"] === "write" &&
+      snapshotJob.permissions?.attestations === "write",
+    "release.yml publish-next job must grant id-token and attestations writes for trusted publishing and provenance"
   );
   assert(
-    (publishJob.steps ?? []).some(
-      (step) =>
-        typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
-    ),
-    "snapshot.yml publish job must run step-security/harden-runner"
+    snapshotJob.permissions?.contents === "read",
+    "release.yml publish-next job must not grant contents: write; snapshots create no releases or tags"
   );
-  const steps = publishJob.steps ?? [];
+  assert(
+    snapshotJob["runs-on"] === "ubuntu-latest",
+    "release.yml publish-next job must run on a GitHub-hosted Ubuntu runner for npm trusted publishing"
+  );
+  assertHardenRunnerBaseline("release.yml publish-next job", snapshotJob);
+  const checkoutStep = (snapshotJob.steps ?? []).find(
+    (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
+  );
+  const workflowRunHeadShaRef = ["${{", " github.sha ", "}}"].join("");
+  assert(
+    checkoutStep?.with?.ref === workflowRunHeadShaRef,
+    "release.yml publish-next checkout must use github.sha so the snapshot targets the merged main commit"
+  );
+  const steps = snapshotJob.steps ?? [];
+  const stepRuns = steps.map((step) => String(step?.run ?? ""));
   const stampIndex = steps.findIndex((step) =>
     String(step?.run ?? "").includes("node scripts/release/snapshot-version.mjs")
   );
   const buildIndex = steps.findIndex((step) => String(step?.run ?? "").includes("npm run build"));
   assert(
     stampIndex >= 0 && buildIndex > stampIndex,
-    "snapshot.yml must stamp the snapshot version before npm run build so dist/build-info.json carries it"
+    "release.yml publish-next must stamp the snapshot version before npm run build so dist/build-info.json carries it"
   );
   assert(
-    snapshot.raw.includes("--tag next"),
-    "snapshot.yml must publish with explicit `npm publish --tag next`"
+    stepRuns.some(
+      (run) => run === 'npm publish "$SUPASCHEMA_TARBALL" --access public --provenance --tag next'
+    ),
+    "release.yml publish-next must publish the smoked tarball with explicit `npm publish --tag next`"
   );
   assert(
-    !snapshot.raw.includes("--tag latest"),
-    "snapshot.yml must never publish to the latest dist-tag"
+    !stepRuns.some((run) => run.includes("--tag latest")),
+    "release.yml publish-next must never publish to the latest dist-tag"
   );
   assert(
-    !snapshot.raw.includes("node scripts/release/preflight.mjs"),
-    "snapshot.yml must bypass the stable-release preflight; snapshots carry no changelog entry"
+    !stepRuns.some((run) => run.includes("node scripts/release/preflight.mjs")),
+    "release.yml publish-next must bypass the stable-release preflight; snapshots carry no changelog entry"
   );
   assert(
-    !snapshot.raw.includes("gh release create"),
-    "snapshot.yml must not create GitHub Releases or tags"
+    !stepRuns.some((run) => run.includes("gh release create")),
+    "release.yml publish-next must not create GitHub Releases or tags"
   );
   const registrySmokeStep = steps.find((step) =>
     String(step?.run ?? "").includes("node scripts/release/registry-smoke.mjs")
@@ -366,11 +368,11 @@ function assertSnapshotYaml(parsed) {
   const immutableSnapshotSpec = ["supaschema@$", "{{ steps.snapshot.outputs.version }}"].join("");
   assert(
     registrySmokeStep?.env?.SUPASCHEMA_REGISTRY_SMOKE_SPEC === immutableSnapshotSpec,
-    "snapshot.yml must registry-smoke the immutable version emitted by the stamp step"
+    "release.yml publish-next must registry-smoke the immutable version emitted by the stamp step"
   );
   assert(
-    (publishJob.steps ?? []).some((step) => stepActionName(step) === "actions/attest"),
-    "snapshot.yml must use actions/attest@v4 for tarball provenance attestation"
+    steps.some((step) => stepActionName(step) === "actions/attest"),
+    "release.yml publish-next must use actions/attest@v4 for tarball provenance attestation"
   );
 }
 
@@ -470,7 +472,6 @@ export function check(root = ROOT) {
     "python.yml",
     "release.yml",
     "scorecard.yml",
-    "snapshot.yml",
   ];
   assert(
     JSON.stringify(files) === JSON.stringify(expectedWorkflowFiles),
@@ -503,7 +504,7 @@ export function check(root = ROOT) {
   );
 
   assertReleaseYaml(parsed);
-  assertSnapshotYaml(parsed);
+  assertSnapshotJob(parsed);
   assertConsumerCanaryYaml(parsed);
 
   const ci = parsed.get("ci.yml")?.doc;

@@ -25,8 +25,8 @@ describe("CI governance guard", () => {
       resolve("scripts/guards/ci-release/check-ci-governance.mjs"),
       "utf8"
     );
-    expect(source).toContain('parsed.get("snapshot.yml")');
-    expect(source).toContain("snapshot-npm");
+    expect(source).not.toContain('"snapshot.yml"');
+    expect(source).toContain('jobs?.["publish-next"]');
     expect(source).toContain("--tag next");
     expect(source).toContain("node scripts/release/snapshot-version.mjs");
     expect(source).toContain("SUPASCHEMA_REGISTRY_SMOKE_SPEC");
