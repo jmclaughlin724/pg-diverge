@@ -25,11 +25,11 @@ The public install package remains `supaschema` on npmjs.org. The release workfl
 
 ## Snapshot channel (`next`)
 
-Every protected `main` push also runs `snapshot.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag with the same OIDC provenance and attestation as a stable release. The `latest` tag, GitHub Releases, `v*` tags, and the GitHub Packages mirror remain `release.yml`-only.
+Every protected `main` push also runs the `publish-next` job in `release.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag with the same OIDC provenance and attestation as a stable release. The `latest` tag, GitHub Releases, `v*` tags, and the GitHub Packages mirror remain exclusive to the `publish` job.
 
 Snapshots exist so downstream projects can dogfood the current main build as an exact version pin instead of a symlink or tarball. Always consume them as exact versions (for example `supaschema@0.5.6-dev.abc1234` or resolving `npm view supaschema@next version` first); do not pin the `next` tag itself in a lockfile-managed manifest, because it moves on every main push.
 
-One-time setup beyond the stable lane: add a second npm trusted publisher entry identical to the `release.yml` entry but with workflow filename `snapshot.yml`. Without it, the snapshot publish fails OIDC validation.
+The snapshot lane is a `release.yml` job because npm allows only one trusted publisher per package: the single entry from the one-time setup covers both publish jobs, and a separate snapshot workflow would fail OIDC validation with E404 after provenance signing. The `publish-next` job extends the Harden-Runner egress baseline with the GitHub release-asset CDN hosts (`objects.githubusercontent.com`, `release-assets.githubusercontent.com`) that the Bun download redirects to during the registry smoke.
 
 A republished SHA is skipped: the workflow probes `npm view` for the exact snapshot version and exits cleanly when it already exists.
 
