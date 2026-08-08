@@ -172,13 +172,15 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      # Same endpoint baseline as the release publish job; npm registry access is
-      # required for the idempotency probe, trusted publishing, and registry smoke.
+      # Same endpoint baseline as the release publish job, plus the GitHub
+      # release-asset CDN hosts that setup-bun's download redirects to; npm
+      # registry access is required for the idempotency probe, trusted
+      # publishing, and registry smoke.
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: block
           allowed-endpoints: >
-            *.actions.githubusercontent.com:443 api.github.com:443 fulcio.sigstore.dev:443 github.com:443 npm.pkg.github.com:443 registry.npmjs.org:443 rekor.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443 api.github.com:443 fulcio.sigstore.dev:443 github.com:443 npm.pkg.github.com:443 objects.githubusercontent.com:443 registry.npmjs.org:443 release-assets.githubusercontent.com:443 rekor.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

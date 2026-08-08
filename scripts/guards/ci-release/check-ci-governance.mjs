@@ -76,7 +76,13 @@ const HARDEN_RUNNER_ENDPOINTS = [
   "tuf-repo-cdn.sigstore.dev:443",
 ];
 
-function assertHardenRunnerBaseline(jobLabel, job) {
+const RELEASE_ASSET_CDN_ENDPOINTS = [
+  "objects.githubusercontent.com:443",
+  "release-assets.githubusercontent.com:443",
+];
+
+function assertHardenRunnerBaseline(jobLabel, job, extraEndpoints = []) {
+  const expectedEndpoints = [...HARDEN_RUNNER_ENDPOINTS, ...extraEndpoints];
   const hardenRunnerStep = (job.steps ?? []).find(
     (step) => typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
   );
@@ -92,8 +98,8 @@ function assertHardenRunnerBaseline(jobLabel, job) {
     .filter(Boolean);
   assert(
     hardenRunnerStep.with?.["egress-policy"] === "block" &&
-      HARDEN_RUNNER_ENDPOINTS.length === allowedEndpoints.length &&
-      HARDEN_RUNNER_ENDPOINTS.every((endpoint) => allowedEndpoints.includes(endpoint)),
+      expectedEndpoints.length === allowedEndpoints.length &&
+      expectedEndpoints.every((endpoint) => allowedEndpoints.includes(endpoint)),
     `${jobLabel} must enforce the reviewed egress endpoint allow-list`
   );
 }
@@ -325,7 +331,11 @@ function assertSnapshotJob(parsed) {
     snapshotJob["runs-on"] === "ubuntu-latest",
     "release.yml publish-next job must run on a GitHub-hosted Ubuntu runner for npm trusted publishing"
   );
-  assertHardenRunnerBaseline("release.yml publish-next job", snapshotJob);
+  assertHardenRunnerBaseline(
+    "release.yml publish-next job",
+    snapshotJob,
+    RELEASE_ASSET_CDN_ENDPOINTS
+  );
   const checkoutStep = (snapshotJob.steps ?? []).find(
     (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
   );
