@@ -23,7 +23,7 @@ This rule owns the operator workflow for version bumps, release notes, the manda
 
 `.github/workflows/release.yml` triggers on `push` to `main`, and its preflight decides whether the pushed version still needs publishing. Merging a PR that bumps `package.json` `version` therefore publishes to npm and creates the GitHub Release with no separate publish step and no publish approval to request afterward. Merging a PR that leaves the version unchanged makes no stable release: preflight finds the version already published and exits successfully.
 
-Every `main` push also runs `.github/workflows/snapshot.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag. Do not tell a user that a version-unchanged merge published nothing; it produced no `latest` release, and its snapshot run can still fail and needs the same attention as any other failed workflow.
+Every `main` push also runs the `publish-next` job in `.github/workflows/release.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag. Do not tell a user that a version-unchanged merge published nothing; it produced no `latest` release, and its snapshot publish can still fail and needs the same attention as any other failed workflow.
 
 - Approval to merge a version-bumped PR is approval to release. Do not merge and then report publishing as still blocked or still pending.
 - Never run `npm publish`, `npm version` with a tag push, or `gh release create` locally. Releases publish through npm OIDC trusted publishing with build provenance from the privileged workflow job; a local publish bypasses provenance attestation and is prohibited even when npm credentials are present.
@@ -73,7 +73,7 @@ When the user asks to stage, commit, push, or create a PR after a version bump, 
 - `.github/workflows/release.yml` creates GitHub Releases with `--notes-file` from `scripts/release/changelog-notes.mjs`, not `--generate-notes`.
 - `npm run guard` runs `guard:release-version` through `scripts/guards/check-all.mjs`.
 - `tests/release/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
-- Snapshot publishing is the one permitted dist-tag write: `snapshot.yml` publishes immutable `X.Y.(Z+1)-dev.<sha>` builds to the `next` tag from protected `main` pushes. The `latest` tag remains release.yml-only, and consuming a snapshot always resolves to an exact version before install; dist-tags remain forbidden for action execution.
+- Snapshot publishing is the one permitted dist-tag write: the release.yml `publish-next` job publishes immutable `X.Y.(Z+1)-dev.<sha>` builds to the `next` tag from protected `main` pushes. The `latest` tag remains release.yml `publish`-job-only, and consuming a snapshot always resolves to an exact version before install; dist-tags remain forbidden for action execution.
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
 
 STOP if a version bump does any of these:
