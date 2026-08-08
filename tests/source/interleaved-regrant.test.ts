@@ -46,6 +46,16 @@ const plainGrant = [
   "GRANT SELECT, INSERT ON TABLE app.t TO app_user;",
 ].join("\n");
 
+const trailingRevoke = [
+  "CREATE SCHEMA app;",
+  "CREATE TABLE app.t (id bigint);",
+  "GRANT INSERT, UPDATE ON TABLE app.t TO app_user;",
+  "REVOKE SELECT, UPDATE ON TABLE app.t FROM app_user;",
+  "GRANT UPDATE ON TABLE app.t TO app_user;",
+  "REVOKE UPDATE ON TABLE app.t FROM app_user;",
+  "REVOKE INSERT, UPDATE ON TABLE app.t FROM app_user;",
+].join("\n");
+
 describe("interleaved partial revoke/regrant net resolution", () => {
   it("collapses the regrant sequence to a single net grant in the declarative model", async () => {
     const declared = await extractFrom("dir", "supa-grant-dir-", "schema.sql");
@@ -84,5 +94,18 @@ describe("interleaved partial revoke/regrant net resolution", () => {
     expect(grants).toHaveLength(1);
     expect(grants[0]?.metadata.verb).toBe("GRANT");
     expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+  });
+
+  it("applies trailing revokes after an intermediate regrant", async () => {
+    const declared = await extractFrom("dir", "supa-trailing-dir-", "schema.sql", trailingRevoke);
+    const replayed = await extractFrom(
+      "migrations",
+      "supa-trailing-mig-",
+      "20240101000000_init.sql",
+      trailingRevoke
+    );
+
+    expect(replayed.fingerprint).toBe(declared.fingerprint);
+    expect(grantsForUser(replayed, "app_user")).toHaveLength(0);
   });
 });

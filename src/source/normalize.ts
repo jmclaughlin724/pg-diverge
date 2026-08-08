@@ -176,7 +176,7 @@ function coversAllGrants(revoked: string[], grants: SchemaObject[]): boolean {
   );
 }
 
-function privilegeTargetKey(object: SchemaObject): string {
+export function privilegeTargetKey(object: SchemaObject): string {
   const meta = object.metadata;
   return [
     object.ref.kind,
@@ -398,110 +398,6 @@ function revokeCoversGrants(revoke: SchemaObject, grants: SchemaObject[]): boole
   return grants.every((grant) =>
     metadataPrivileges(grant.metadata).every((privilege) => revoked.has(privilege))
   );
-}
-
-interface RegrantNetResult {
-  remove: SchemaObject[];
-  replacement?: SchemaObject;
-}
-
-export async function coveringRevokeForRegrant(
-  objects: ReadonlyMap<string, SchemaObject>,
-  existing: SchemaObject,
-  incoming: SchemaObject,
-  options: SourceNormalizeOptions
-): Promise<RegrantNetResult | undefined> {
-  if (existing.ref.kind !== "grant" || incoming.ref.kind !== "grant") {
-    return;
-  }
-  if (existing.metadata.verb !== "GRANT" || incoming.metadata.verb !== "GRANT") {
-    return;
-  }
-  const targetKey = privilegeTargetKey(existing);
-  if (privilegeTargetKey(incoming) !== targetKey) {
-    return;
-  }
-  const { revokes: laterRevokes, coveringNonNettable } = laterRevokesForRegrant(
-    objects,
-    existing,
-    targetKey
-  );
-  if (laterRevokes.length === 0) {
-    return;
-  }
-  if (coveringNonNettable) {
-    return { remove: [coveringNonNettable] };
-  }
-  const canNetPerPrivilege =
-    isNettablePrivilegeObject(existing) &&
-    isNettablePrivilegeObject(incoming) &&
-    laterRevokes.every(isNettablePrivilegeObject);
-  if (!canNetPerPrivilege) {
-    const coveringRevoke = laterRevokes.find((revoke) => revokeCoversGrants(revoke, [existing]));
-    if (coveringRevoke) {
-      return { remove: [coveringRevoke] };
-    }
-    return;
-  }
-  const group = [existing, incoming, ...laterRevokes];
-  const net = privilegeNetSet(group);
-  if (!net) {
-    return;
-  }
-  if (net.size === 0) {
-    return { remove: group };
-  }
-  const replacement = await buildRegrantNetReplacement(group, incoming, options);
-  if (!replacement) {
-    return;
-  }
-  return { remove: group, replacement };
-}
-
-function laterRevokesForRegrant(
-  objects: ReadonlyMap<string, SchemaObject>,
-  existing: SchemaObject,
-  targetKey: string
-): { revokes: SchemaObject[]; coveringNonNettable: SchemaObject | undefined } {
-  const revokes: SchemaObject[] = [];
-  let coveringNonNettable: SchemaObject | undefined;
-  for (const object of objects.values()) {
-    if (
-      object.ref.kind === "grant" &&
-      isRevokedPrivilegeObject(object) &&
-      !isBuiltinPublicRevoke(object) &&
-      privilegeTargetKey(object) === targetKey &&
-      object.ordinal > existing.ordinal
-    ) {
-      revokes.push(object);
-      if (!isNettablePrivilegeObject(object) && revokeCoversGrants(object, [existing])) {
-        coveringNonNettable = object;
-      }
-    }
-  }
-  return { revokes, coveringNonNettable };
-}
-
-async function buildRegrantNetReplacement(
-  group: SchemaObject[],
-  incoming: SchemaObject,
-  options: SourceNormalizeOptions
-): Promise<SchemaObject | undefined> {
-  const net = privilegeNetSet(group);
-  if (!net || net.size === 0) {
-    return;
-  }
-  const template = earliestGrant(group) ?? incoming;
-  const built = await buildNetGrantObject(
-    template,
-    group,
-    [...net].sort((left, right) => left.localeCompare(right)),
-    options
-  );
-  if (built) {
-    built.ordinal = incoming.ordinal;
-  }
-  return built;
 }
 
 interface ColumnDefaultAmendment {
@@ -978,7 +874,7 @@ function applyColumnGeneratedAmendments(
       ...asRecord(table.metadata.columnGeneratedExpressionSqlByColumn),
     };
     if (amendment.action === "drop") {
-      const { generated: _generated, ...withoutGenerated } = column;
+      const { generated: _generated, generatedKind: _generatedKind, ...withoutGenerated } = column;
       nextColumns[columnIndex] = withoutGenerated;
       delete generatedExpressions[amendment.column];
     } else {

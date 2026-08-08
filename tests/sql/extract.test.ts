@@ -1243,6 +1243,75 @@ AS $function$ SELECT 1 $function$`,
     expect(forwardReferences[0]?.hint).toContain("app.ft.new_col");
   });
 
+  it("rejects references to a column introduced only by CREATE TABLE AS", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE app.t AS SELECT 1 AS new_col;
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
+  it("rejects references to a column introduced only by a recreated materialized view", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP MATERIALIZED VIEW IF EXISTS app.t;
+
+      CREATE MATERIALIZED VIEW app.t AS SELECT 1 AS new_col;
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
+  it("fails closed for columns inherited only by the recreated table", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE TABLE app.parent (new_col int);
+
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE app.t () INHERITS (app.parent);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t");
+  });
+
+  it("rejects references after a cascading schema drop removed the baseline relation", async () => {
+    const diagnostics = await checkMigrationSql(`
+      DROP SCHEMA app CASCADE;
+      CREATE SCHEMA app;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT * FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE app.t (id bigint PRIMARY KEY);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t");
+  });
+
   it("allows references to a column created before the drop across a recreate", async () => {
     const diagnostics = await checkMigrationSql(`
       ALTER TABLE app.t ADD COLUMN new_col int;

@@ -1,5 +1,0 @@
----
-"supaschema": patch
----
-
-Fix grant diffing for revoke-all + re-grant privilege hardening: a covering REVOKE with GRANT statements on both sides of it (multi-privilege or column-scoped re-grants) no longer nets the re-grants away in the source model, migration replay now treats a GRANT following a covering REVOKE on the same target and grantee as the new privilege state instead of merging it into the revoked one, and a REVOKE that overlaps none of the granted privileges on its target is suppressed as the no-op it is instead of surviving to render phantom restore-GRANTs. Interleaved partial revoke/regrant sequences (for example `grant a,b; revoke a; grant a; revoke b; grant b`) now resolve to their net privilege state in both the declarative source model and migration replay, so the two fingerprints no longer diverge. Declarative `revoke all … ; grant …` blocks now plan a non-destructive grant replace (revoke the previous privilege state, then grant the target state) rather than a destructive standalone grant drop.

@@ -1,13 +1,23 @@
 import type { AstNode } from "./ast.js";
-import { asRecord, readArray, readNumber, readString, stringList, typeNameToSql } from "./ast.js";
+import {
+  asRecord,
+  readArray,
+  readBoolean,
+  readNumber,
+  readString,
+  stringList,
+  typeNameToSql,
+} from "./ast.js";
 import { stripLocations } from "./object-hash.js";
 
 interface CanonicalColumn {
   default?: unknown;
   generated?: unknown;
+  generatedKind?: string;
   identity?: string;
   name: string;
   notNull: boolean;
+  notNullEnforced?: boolean;
   type: string;
 }
 
@@ -61,6 +71,7 @@ export function canonicalTableShape(node: AstNode): Record<string, unknown> {
   for (const column of columns) {
     if (primaryColumns.has(column.name)) {
       column.notNull = true;
+      column.notNullEnforced ??= true;
     }
   }
   const shape: Record<string, unknown> = {
@@ -93,6 +104,7 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
     notNull: false,
     type: canonicalColumnType(columnDef.typeName),
   };
+  let previousConstraintType: string | undefined;
   for (const item of readArray(columnDef.constraints)) {
     const constraint = asRecord(asRecord(item)?.Constraint);
     const contype = readString(constraint?.contype);
@@ -102,6 +114,22 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
     switch (contype) {
       case "CONSTR_NOTNULL":
         column.notNull = true;
+        column.notNullEnforced =
+          constraint.is_enforced === undefined || readBoolean(constraint.is_enforced);
+        break;
+      case "CONSTR_ATTR_ENFORCED":
+        if (previousConstraintType === "CONSTR_NOTNULL") {
+          column.notNullEnforced = true;
+        } else {
+          constraints.push(canonicalConstraint(constraint, [name]));
+        }
+        break;
+      case "CONSTR_ATTR_NOT_ENFORCED":
+        if (previousConstraintType === "CONSTR_NOTNULL") {
+          column.notNullEnforced = false;
+        } else {
+          constraints.push(canonicalConstraint(constraint, [name]));
+        }
         break;
       case "CONSTR_NULL":
         break;
@@ -115,11 +143,13 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
         break;
       case "CONSTR_GENERATED":
         column.generated = stripLocations(constraint.raw_expr);
+        column.generatedKind = readString(constraint.generated_kind) ?? "s";
         break;
       default:
         constraints.push(canonicalConstraint(constraint, [name]));
         break;
     }
+    previousConstraintType = contype;
   }
   return column;
 }

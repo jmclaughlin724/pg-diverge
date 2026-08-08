@@ -374,15 +374,15 @@ function explainGeneratedFacet(
   after: CanonicalColumnEntry,
   alteration: ColumnAlteration
 ): ColumnFacetChange {
-  if (stableJson(before.generated ?? null) === stableJson(after.generated ?? null)) {
+  const expressionChanged =
+    stableJson(before.generated ?? null) !== stableJson(after.generated ?? null);
+  const storageChanged = before.generatedKind !== after.generatedKind;
+  if (!(expressionChanged || storageChanged)) {
     return { changed: false, explained: false };
   }
-  if (after.generated === undefined) {
+  if (after.generated === undefined && before.generatedKind !== "v") {
     alteration.dropGenerated = true;
     return { changed: true, explained: true };
-  }
-  if (before.generated === undefined) {
-    return { changed: true, explained: false };
   }
   return { changed: true, explained: false };
 }
@@ -442,10 +442,18 @@ function explainNotNullFacet(
   after: CanonicalColumnEntry,
   alteration: ColumnAlteration
 ): ColumnFacetChange {
-  if (before.notNull === after.notNull) {
+  const nullabilityChanged = before.notNull !== after.notNull;
+  const enforcementChanged = before.notNullEnforced !== after.notNullEnforced;
+  if (!(nullabilityChanged || enforcementChanged)) {
     return { changed: false, explained: false };
   }
+  if (!nullabilityChanged) {
+    return { changed: true, explained: false };
+  }
   if (after.notNull === true) {
+    if (after.notNullEnforced === false) {
+      return { changed: true, explained: false };
+    }
     alteration.setNotNull = true;
   } else {
     alteration.dropNotNull = true;
@@ -497,9 +505,11 @@ function residual(entry: CanonicalColumnEntry): string {
   const {
     default: _default,
     generated: _generated,
+    generatedKind: _generatedKind,
     identity: _identity,
     identitySql: _identitySql,
     notNull: _notNull,
+    notNullEnforced: _notNullEnforced,
     type: _type,
     ...rest
   } = entry;
