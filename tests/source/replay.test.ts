@@ -779,23 +779,25 @@ ALTER TABLE app.accounts RENAME TO "Purchase Order";`,
     expect(columnComment?.sql).toBe(`COMMENT ON COLUMN app."Purchase Order".email IS 'contact'`);
   });
 
-  it("preserves empty-string comments and deletes only IS NULL comments", async () => {
+  it("deletes empty-string and IS NULL comments while keeping nonempty comments", async () => {
     const model = await extractMigrations([
       [
         "20240101000000_empty_comment.sql",
         `CREATE SCHEMA app;
 CREATE SCHEMA other;
+CREATE SCHEMA extra;
 COMMENT ON SCHEMA app IS '';
 COMMENT ON SCHEMA other IS 'temp';
-COMMENT ON SCHEMA other IS NULL;`,
+COMMENT ON SCHEMA other IS NULL;
+COMMENT ON SCHEMA extra IS 'docs';`,
       ],
     ]);
 
     expect(errors(model.diagnostics)).toEqual([]);
     const comments = model.objects.filter((object) => object.ref.kind === "comment");
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.metadata.description).toBe("");
-    expect(comments[0]?.metadata.commentTarget).toMatchObject({ kind: "schema", name: "app" });
+    expect(comments[0]?.metadata.description).toBe("docs");
+    expect(comments[0]?.metadata.commentTarget).toMatchObject({ kind: "schema", name: "extra" });
   });
 
   it("hard-fails unsupported rename types without returning partial objects", async () => {

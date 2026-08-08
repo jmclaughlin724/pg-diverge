@@ -209,25 +209,20 @@ function canonicalAddConstraintSql(
   name: string
 ): string | undefined {
   try {
-    const relation = asRecord(structuredClone(alterTable.relation));
-    const namedCommand = structuredClone(command);
-    namedCommand.def = {
-      ...(asRecord(namedCommand.def) ?? {}),
-      Constraint: { ...structuredClone(constraint), conname: name },
+    const relation = asRecord(alterTable.relation);
+    const namedCommand = {
+      ...command,
+      def: {
+        ...(asRecord(command.def) ?? {}),
+        Constraint: { ...constraint, conname: name },
+      },
     };
     const node = {
-      ...structuredClone(alterTable),
+      ...alterTable,
       cmds: [{ AlterTableCmd: namedCommand }],
       ...(relation === undefined ? {} : { relation: { ...relation, inh: false } }),
     };
-    return deparseSync(
-      JSON.parse(
-        JSON.stringify({
-          stmts: [{ stmt: { AlterTableStmt: node } }],
-          version: 170_004,
-        })
-      )
-    );
+    return deparseSync(JSON.parse(JSON.stringify({ AlterTableStmt: node })));
   } catch {
     // Unsupported parser fragments are reported by the caller as ambiguous ALTER TABLE input.
   }

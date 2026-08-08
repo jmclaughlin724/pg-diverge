@@ -16,7 +16,6 @@ import {
   typeNameToSql,
 } from "./ast.js";
 import { formatQualifiedName, normalizeSql, quoteIdent } from "./identifiers.js";
-import { scanSql } from "./parser.js";
 import { makeObject } from "./statements.js";
 
 const grantObjectKinds = new Map([
@@ -702,12 +701,12 @@ export function isInitdbDefaultComment(
   return descriptor === "schema public" && description === "standard public schema";
 }
 
-export async function commentObjectFromAst(
+export function commentObjectFromAst(
   node: AstNode,
   statement: string,
   ordinal: number,
   file?: string
-): Promise<SchemaObject | undefined> {
+): SchemaObject | undefined {
   const objtype = readString(node.objtype);
   const kind = objtype ? commentObjectKinds.get(objtype) : undefined;
   if (!kind) {
@@ -718,34 +717,12 @@ export async function commentObjectFromAst(
     return;
   }
   return buildCommentObject({
-    description: await commentDescription(node, statement),
+    description: readString(node.comment) ?? null,
     ...(file === undefined ? {} : { file }),
     ordinal,
     sql: statement,
     target,
   });
-}
-
-async function commentDescription(node: AstNode, statement: string): Promise<string | null> {
-  const explicit = readString(node.comment) ?? stringValue(node.comment);
-  if (explicit !== undefined) {
-    return explicit;
-  }
-  const scanned = await scanSql(statement);
-  return lastCommentValueIsStringLiteral(scanned.tokens) ? "" : null;
-}
-
-const semicolonTokenName = "ASCII_59";
-const stringLiteralTokenName = "SCONST";
-
-function lastCommentValueIsStringLiteral(tokens: unknown[] | undefined): boolean {
-  if (!tokens || tokens.length === 0) {
-    return false;
-  }
-  const lastIndex = tokens.length - 1;
-  const lastTokenName = readString(asRecord(tokens[lastIndex])?.tokenName);
-  const valueIndex = lastTokenName === semicolonTokenName ? lastIndex - 1 : lastIndex;
-  return readString(asRecord(tokens[valueIndex])?.tokenName) === stringLiteralTokenName;
 }
 
 function commentTarget(

@@ -837,24 +837,23 @@ describe("rls facet merge", () => {
 });
 
 describe("comment state transitions", () => {
-  it("removes a prior comment with IS NULL", async () => {
-    const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS NULL;\n"
-    );
+  it("treats NULL and every empty-string spelling as comment deletion", async () => {
+    const model = await modelFromSql(`CREATE SCHEMA null_comment;
+CREATE SCHEMA standard_empty_comment;
+CREATE SCHEMA escape_empty_comment;
+CREATE SCHEMA unicode_empty_comment;
+COMMENT ON SCHEMA null_comment IS 'docs';
+COMMENT ON SCHEMA standard_empty_comment IS 'docs';
+COMMENT ON SCHEMA escape_empty_comment IS 'docs';
+COMMENT ON SCHEMA unicode_empty_comment IS 'docs';
+COMMENT ON SCHEMA null_comment IS NULL;
+COMMENT ON SCHEMA standard_empty_comment IS '';
+COMMENT ON SCHEMA escape_empty_comment IS E'';
+COMMENT ON SCHEMA unicode_empty_comment IS U&'';
+`);
 
     expect(errors(model)).toEqual([]);
     expect(model.objects.filter((object) => object.ref.kind === "comment")).toEqual([]);
-  });
-
-  it("keeps an empty-string comment as a distinct comment", async () => {
-    const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS '';\n"
-    );
-
-    expect(errors(model)).toEqual([]);
-    const comments = model.objects.filter((object) => object.ref.kind === "comment");
-    expect(comments).toHaveLength(1);
-    expect(comments[0]?.metadata.description).toBe("");
   });
 });
 
