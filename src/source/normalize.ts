@@ -38,7 +38,9 @@ export async function normalizeSourceObjects(
   const afterOwnedBy = applySequenceOwnedByAmendments(afterPartitions, diagnostics);
   const afterComments = applyCommentTransitions(afterOwnedBy);
   const afterRls = await mergeRlsFacets(afterComments, options);
-  const mergedGrants = await mergeSplitPrivileges(afterRls, "grant", options);
+  const afterClearedPairs = suppressClearedRevokeGrantPairs(afterRls);
+  const afterInterleaved = await resolveInterleavedPrivilegeRegrants(afterClearedPairs, options);
+  const mergedGrants = await mergeSplitPrivileges(afterInterleaved, "grant", options);
   const withoutDefaultEquals = suppressDefaultEqualPrivileges(mergedGrants);
   const withoutImpliedGrants = suppressDefaultAclImpliedGrants(withoutDefaultEquals);
   const mergedDefaults = await mergeSplitPrivileges(
@@ -88,17 +90,36 @@ function markDefaultEqualPrivilege(
     return;
   }
   const counterparts = grantsByTarget.get(privilegeTargetKey(object)) ?? [];
-  if (counterparts.length === 0 || object.ordinal < latestOrdinal(counterparts)) {
+  const privileges = metadataPrivileges(object.metadata);
+  if (!overlapsAnyGrant(privileges, counterparts) || object.ordinal < latestOrdinal(counterparts)) {
     nettedAway.add(object);
     return;
   }
-  const privileges = metadataPrivileges(object.metadata);
   if (privileges.includes("ALL") || coversAllGrants(privileges, counterparts)) {
     nettedAway.add(object);
     for (const counterpart of counterparts) {
       nettedAway.add(counterpart);
     }
   }
+}
+
+function overlapsAnyGrant(revoked: string[], grants: SchemaObject[]): boolean {
+  if (grants.length === 0) {
+    return false;
+  }
+  if (revoked.includes("ALL")) {
+    return true;
+  }
+  const revokedSet = new Set(revoked);
+  return grants.some((grant) =>
+    metadataPrivileges(grant.metadata).some((privilege) =>
+      grantPrivilegeCoveredByRevoked(privilege, revokedSet)
+    )
+  );
+}
+
+function grantPrivilegeCoveredByRevoked(privilege: string, revoked: ReadonlySet<string>): boolean {
+  return revoked.has(privilege) || privilege === "ALL";
 }
 
 function keepDefaultEqualPrivilege(object: SchemaObject, nettedAway: Set<SchemaObject>): boolean {
@@ -148,10 +169,11 @@ function metadataKindPhrase(meta: Record<string, unknown>): string {
 
 function coversAllGrants(revoked: string[], grants: SchemaObject[]): boolean {
   const revokedSet = new Set(revoked);
-  return grants.every((grant) => {
-    const granted = stringArray(grant.metadata.privileges) ?? [];
-    return granted.every((privilege) => revokedSet.has(privilege) || privilege === "ALL");
-  });
+  return grants.every((grant) =>
+    metadataPrivileges(grant.metadata).every((privilege) =>
+      grantPrivilegeCoveredByRevoked(privilege, revokedSet)
+    )
+  );
 }
 
 function privilegeTargetKey(object: SchemaObject): string {
@@ -163,6 +185,323 @@ function privilegeTargetKey(object: SchemaObject): string {
     typeof meta.forRole === "string" ? meta.forRole : "",
     typeof meta.grantee === "string" ? meta.grantee : "",
   ].join("|");
+}
+
+function suppressClearedRevokeGrantPairs(objects: SchemaObject[]): SchemaObject[] {
+  const groups = new Map<string, SchemaObject[]>();
+  for (const object of objects) {
+    if (object.ref.kind !== "grant") {
+      continue;
+    }
+    const key = privilegeTargetKey(object);
+    const group = groups.get(key) ?? [];
+    group.push(object);
+    groups.set(key, group);
+  }
+  const nettedAway = new Set<SchemaObject>();
+  for (const group of groups.values()) {
+    const revokes = group
+      .filter((object) => isRevokedPrivilegeObject(object) && !isBuiltinPublicRevoke(object))
+      .sort((left, right) => left.ordinal - right.ordinal);
+    for (const revoke of revokes) {
+      const grants = group.filter(
+        (object) => object.metadata.verb === "GRANT" && !nettedAway.has(object)
+      );
+      const pre = grants.filter((object) => object.ordinal < revoke.ordinal);
+      const hasRegrant = grants.some((object) => object.ordinal > revoke.ordinal);
+      if (pre.length === 0 || !hasRegrant) {
+        continue;
+      }
+      if (!revokeCoversGrants(revoke, pre)) {
+        continue;
+      }
+      nettedAway.add(revoke);
+      for (const object of pre) {
+        nettedAway.add(object);
+      }
+    }
+  }
+  return nettedAway.size === 0 ? objects : objects.filter((object) => !nettedAway.has(object));
+}
+
+async function resolveInterleavedPrivilegeRegrants(
+  objects: SchemaObject[],
+  options: SourceNormalizeOptions
+): Promise<SchemaObject[]> {
+  const remove = new Set<SchemaObject>();
+  const replacements = new Map<string, SchemaObject>();
+  for (const group of collectPrivilegeGroups(objects).values()) {
+    const net = interleavedPrivilegeNet(group);
+    if (net === undefined) {
+      continue;
+    }
+    for (const member of group) {
+      remove.add(member);
+    }
+    const template = earliestGrant(group);
+    if (template && net.length > 0) {
+      const built = await buildNetGrantObject(template, group, net, options);
+      if (built) {
+        replacements.set(template.key, built);
+      }
+    }
+  }
+  if (remove.size === 0) {
+    return objects;
+  }
+  return applyInterleavedReplacements(objects, remove, replacements);
+}
+
+function collectPrivilegeGroups(objects: SchemaObject[]): Map<string, SchemaObject[]> {
+  const groups = new Map<string, SchemaObject[]>();
+  for (const object of objects) {
+    if (object.ref.kind !== "grant") {
+      continue;
+    }
+    const key = privilegeTargetKey(object);
+    const group = groups.get(key) ?? [];
+    group.push(object);
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+function earliestGrant(group: SchemaObject[]): SchemaObject | undefined {
+  return group
+    .filter((object) => object.metadata.verb === "GRANT" && !isBuiltinPublicRevoke(object))
+    .sort((left, right) => left.ordinal - right.ordinal)[0];
+}
+
+function applyInterleavedReplacements(
+  objects: SchemaObject[],
+  remove: Set<SchemaObject>,
+  replacements: Map<string, SchemaObject>
+): SchemaObject[] {
+  const result: SchemaObject[] = [];
+  for (const object of objects) {
+    if (!remove.has(object)) {
+      result.push(object);
+      continue;
+    }
+    const replacement = replacements.get(object.key);
+    if (replacement) {
+      result.push(replacement);
+      replacements.delete(object.key);
+    }
+  }
+  return result;
+}
+
+function interleavedPrivilegeNet(group: SchemaObject[]): string[] | undefined {
+  const net = privilegeNetSet(group);
+  if (!net) {
+    return;
+  }
+  return [...net].sort((left, right) => left.localeCompare(right));
+}
+
+function privilegeNetSet(group: SchemaObject[]): Set<string> | undefined {
+  const ordered = [...group].sort((left, right) => left.ordinal - right.ordinal);
+  let hasGrant = false;
+  let hasRevoke = false;
+  const state = new Set<string>();
+  for (const object of ordered) {
+    if (!isNettablePrivilegeObject(object)) {
+      return;
+    }
+    const isGrant = object.metadata.verb === "GRANT";
+    if (isGrant) {
+      hasGrant = true;
+    } else {
+      hasRevoke = true;
+    }
+    applyPrivilegeTransition(state, isGrant, metadataPrivileges(object.metadata));
+  }
+  if (!(hasGrant && hasRevoke)) {
+    return;
+  }
+  return state;
+}
+
+function isNettablePrivilegeObject(object: SchemaObject): boolean {
+  if (object.ref.kind !== "grant") {
+    return false;
+  }
+  if (isBuiltinPublicRevoke(object)) {
+    return false;
+  }
+  const privileges = metadataPrivileges(object.metadata);
+  if (privileges.includes("ALL") || object.metadata.columnPrivileges !== undefined) {
+    return false;
+  }
+  const grantOption = stringArray(object.metadata.grantOptionPrivileges) ?? [];
+  if (grantOption.length > 0) {
+    return false;
+  }
+  return true;
+}
+
+function applyPrivilegeTransition(
+  state: Set<string>,
+  isGrant: boolean,
+  privileges: string[]
+): void {
+  for (const privilege of privileges) {
+    if (isGrant) {
+      state.add(privilege);
+    } else {
+      state.delete(privilege);
+    }
+  }
+}
+
+async function buildNetGrantObject(
+  template: SchemaObject,
+  group: SchemaObject[],
+  privileges: string[],
+  options: SourceNormalizeOptions
+): Promise<SchemaObject | undefined> {
+  const meta = template.metadata;
+  if (
+    typeof meta.grantee !== "string" ||
+    typeof meta.kindPhrase !== "string" ||
+    typeof meta.target !== "string" ||
+    typeof meta.targetIdentity !== "string"
+  ) {
+    return;
+  }
+  const built = buildGrantObject({
+    file: template.file,
+    grantee: meta.grantee,
+    kindPhrase: meta.kindPhrase,
+    ordinal: template.ordinal,
+    privileges,
+    schema: template.ref.schema,
+    targetIdentity: meta.targetIdentity,
+    targetRendered: meta.target,
+    verb: "GRANT",
+  });
+  built.dependencies = mergedDependencies(group);
+  await finalizeObject(built, { normalize: options.normalize === true });
+  return built;
+}
+
+function revokeCoversGrants(revoke: SchemaObject, grants: SchemaObject[]): boolean {
+  if (revoke.metadata.columnPrivileges !== undefined) {
+    return false;
+  }
+  const privileges = metadataPrivileges(revoke.metadata);
+  if (privileges.includes("ALL")) {
+    return true;
+  }
+  const revoked = new Set(privileges);
+  return grants.every((grant) =>
+    metadataPrivileges(grant.metadata).every((privilege) => revoked.has(privilege))
+  );
+}
+
+interface RegrantNetResult {
+  remove: SchemaObject[];
+  replacement?: SchemaObject;
+}
+
+export async function coveringRevokeForRegrant(
+  objects: ReadonlyMap<string, SchemaObject>,
+  existing: SchemaObject,
+  incoming: SchemaObject,
+  options: SourceNormalizeOptions
+): Promise<RegrantNetResult | undefined> {
+  if (existing.ref.kind !== "grant" || incoming.ref.kind !== "grant") {
+    return;
+  }
+  if (existing.metadata.verb !== "GRANT" || incoming.metadata.verb !== "GRANT") {
+    return;
+  }
+  const targetKey = privilegeTargetKey(existing);
+  if (privilegeTargetKey(incoming) !== targetKey) {
+    return;
+  }
+  const { revokes: laterRevokes, coveringNonNettable } = laterRevokesForRegrant(
+    objects,
+    existing,
+    targetKey
+  );
+  if (laterRevokes.length === 0) {
+    return;
+  }
+  if (coveringNonNettable) {
+    return { remove: [coveringNonNettable] };
+  }
+  const canNetPerPrivilege =
+    isNettablePrivilegeObject(existing) &&
+    isNettablePrivilegeObject(incoming) &&
+    laterRevokes.every(isNettablePrivilegeObject);
+  if (!canNetPerPrivilege) {
+    const coveringRevoke = laterRevokes.find((revoke) => revokeCoversGrants(revoke, [existing]));
+    if (coveringRevoke) {
+      return { remove: [coveringRevoke] };
+    }
+    return;
+  }
+  const group = [existing, incoming, ...laterRevokes];
+  const net = privilegeNetSet(group);
+  if (!net) {
+    return;
+  }
+  if (net.size === 0) {
+    return { remove: group };
+  }
+  const replacement = await buildRegrantNetReplacement(group, incoming, options);
+  if (!replacement) {
+    return;
+  }
+  return { remove: group, replacement };
+}
+
+function laterRevokesForRegrant(
+  objects: ReadonlyMap<string, SchemaObject>,
+  existing: SchemaObject,
+  targetKey: string
+): { revokes: SchemaObject[]; coveringNonNettable: SchemaObject | undefined } {
+  const revokes: SchemaObject[] = [];
+  let coveringNonNettable: SchemaObject | undefined;
+  for (const object of objects.values()) {
+    if (
+      object.ref.kind === "grant" &&
+      isRevokedPrivilegeObject(object) &&
+      !isBuiltinPublicRevoke(object) &&
+      privilegeTargetKey(object) === targetKey &&
+      object.ordinal > existing.ordinal
+    ) {
+      revokes.push(object);
+      if (!isNettablePrivilegeObject(object) && revokeCoversGrants(object, [existing])) {
+        coveringNonNettable = object;
+      }
+    }
+  }
+  return { revokes, coveringNonNettable };
+}
+
+async function buildRegrantNetReplacement(
+  group: SchemaObject[],
+  incoming: SchemaObject,
+  options: SourceNormalizeOptions
+): Promise<SchemaObject | undefined> {
+  const net = privilegeNetSet(group);
+  if (!net || net.size === 0) {
+    return;
+  }
+  const template = earliestGrant(group) ?? incoming;
+  const built = await buildNetGrantObject(
+    template,
+    group,
+    [...net].sort((left, right) => left.localeCompare(right)),
+    options
+  );
+  if (built) {
+    built.ordinal = incoming.ordinal;
+  }
+  return built;
 }
 
 interface ColumnDefaultAmendment {

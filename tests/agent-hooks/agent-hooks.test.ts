@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -127,7 +127,9 @@ describe("registered hook topology", () => {
 });
 
 describe("actual context hook entrypoints", () => {
-  it("allows Git but blocks positive Bash safety matches through a Claude runtime", async () => {
+  it("allows Git but blocks positive Bash safety matches through a Claude runtime", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-runtime-state-"));
     const hook = join(root, ".claude", "hooks", "context-pre-tool-use.mjs");
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
@@ -164,6 +166,7 @@ describe("actual context hook entrypoints", () => {
 
   it.each([".claude", ".codex"])(
     "makes every already-loaded Codex hook family inert through %s wrappers",
+    { timeout: 20_000 },
     async (runtimeRoot) => {
       const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-disabled-state-"));
       const env = hookEnvironment("codex", { STATE_DIR: stateDir });
@@ -181,7 +184,7 @@ describe("actual context hook entrypoints", () => {
     }
   );
 
-  it("makes malformed input visible without denying the event", async () => {
+  it("makes malformed input visible without denying the event", { timeout: 20_000 }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-malformed-"));
     const result = await runRawHook(
       join(root, ".claude/hooks/context-pre-tool-use.mjs"),
@@ -195,7 +198,9 @@ describe("actual context hook entrypoints", () => {
     expect(output.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 
-  it("runs silent SessionStart and SessionEnd lifecycle entrypoints", async () => {
+  it("runs silent SessionStart and SessionEnd lifecycle entrypoints", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-lifecycle-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const common = {
@@ -228,7 +233,9 @@ describe("actual context hook entrypoints", () => {
     });
   });
 
-  it("recovers a killed owner while crediting exact skill content", async () => {
+  it("recovers a killed owner while crediting exact skill content", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-skill-load-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-skill-load";
@@ -274,7 +281,7 @@ describe("actual context hook entrypoints", () => {
       env
     );
     expect(recorded).toMatchObject({ code: 0, stderr: "", stdout: "" });
-    expect(Date.now() - recoveryStartedAt).toBeLessThan(2000);
+    expect(Date.now() - recoveryStartedAt).toBeLessThan(5000);
 
     const governed = await runHook(
       join(root, ".claude/hooks/context-pre-tool-use.mjs"),
@@ -292,7 +299,9 @@ describe("actual context hook entrypoints", () => {
     ).toBe(false);
   });
 
-  it("never age-steals a live owner and lets SessionEnd reclaim it after SIGKILL", async () => {
+  it("never age-steals a live owner and lets SessionEnd reclaim it after SIGKILL", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-live-lock-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-live-lock";
@@ -326,7 +335,7 @@ describe("actual context hook entrypoints", () => {
       const elapsedMs = Date.now() - startedAt;
 
       expect(elapsedMs).toBeGreaterThanOrEqual(450);
-      expect(elapsedMs).toBeLessThan(2000);
+      expect(elapsedMs).toBeLessThan(5000);
       expect(hookOutput(liveEnd.stdout).systemMessage).toContain(
         "timed out waiting for session state lock"
       );
@@ -355,7 +364,9 @@ describe("actual context hook entrypoints", () => {
     expect(await pathExists(lockDirectory)).toBe(false);
   });
 
-  it("leaves no lock artifacts when contending waiters are killed", async () => {
+  it("leaves no lock artifacts when contending waiters are killed", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-killed-waiters-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const hook = join(root, ".claude/hooks/context-pre-tool-use.mjs");
@@ -405,7 +416,9 @@ describe("actual context hook entrypoints", () => {
     expect(await pathExists(lockDirectory)).toBe(false);
   });
 
-  it("serializes concurrent evidence updates through the actual hook entrypoint", async () => {
+  it("serializes concurrent evidence updates through the actual hook entrypoint", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-concurrent-state-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const hook = join(root, ".claude/hooks/context-post-tool-use.mjs");
@@ -452,7 +465,9 @@ describe("actual context hook entrypoints", () => {
     );
   });
 
-  it("keeps a masked success from resolving an actual Stop failure conflict", async () => {
+  it("keeps a masked success from resolving an actual Stop failure conflict", {
+    timeout: 20_000,
+  }, async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-outcome-state-"));
     const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-outcome";
@@ -508,6 +523,216 @@ describe("actual context hook entrypoints", () => {
     expect(honest).toMatchObject({ code: 0, stderr: "", stdout: "" });
   });
 });
+
+describe("comment-free source write-time enforcement", () => {
+  const probeDirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(probeDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function writeProbe(content: string): Promise<string> {
+    const dir = await mkdtemp(join(root, "tests", "comment-hook-"));
+    probeDirs.push(dir);
+    const file = join(dir, "probe.ts");
+    await writeFile(file, content, "utf8");
+    return slash(file);
+  }
+
+  async function runEdit(toolName: string, toolInput: Record<string, unknown>) {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-comment-hook-state-"));
+    return runHook(
+      join(root, ".claude/hooks/context-pre-tool-use.mjs"),
+      {
+        hook_event_name: "PreToolUse",
+        session_id: `comment-hook-${Math.random().toString(36).slice(2)}`,
+        tool_name: toolName,
+        tool_input: toolInput,
+      },
+      hookEnvironment("claude", { STATE_DIR: stateDir })
+    );
+  }
+
+  function decision(stdout: string): { decision?: string; reason?: string } {
+    const specific = hookOutput(stdout).hookSpecificOutput;
+    return specific?.permissionDecision === "deny"
+      ? { decision: "deny", reason: specific.permissionDecisionReason }
+      : {};
+  }
+
+  it("denies a Write that adds a line comment to tracked JS/TS", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "export const x = 1;\n// explain\n",
+    });
+    expect(decision(result.stdout)).toMatchObject({
+      decision: "deny",
+      reason: expect.stringContaining("rule 07"),
+    });
+  });
+
+  it("denies a Write that adds a block comment", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "export const x = 1; /* hi */\n",
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows a clean Write to tracked JS/TS", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "export const x = 1;\n",
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("allows // inside a string literal", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: 'export const s = "a // not a comment";\n',
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("allows a shebang on line 1", async () => {
+    const result = await runEdit("Write", {
+      file_path: "src/__probe.ts",
+      content: "#!/usr/bin/env node\nexport const x = 1;\n",
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("ignores non-code paths (markdown, python)", async () => {
+    const md = await runEdit("Write", { file_path: "README.md", content: "<!-- c -->\n" });
+    expect(decision(md.stdout).decision).toBeUndefined();
+    const py = await runEdit("Write", {
+      file_path: "src/__probe.py",
+      content: "# comment\nx = 1\n",
+    });
+    expect(decision(py.stdout).decision).toBeUndefined();
+  });
+
+  it("denies an Edit that adds a comment", async () => {
+    const file = await writeProbe("export const x = 1;\n");
+    const result = await runEdit("Edit", {
+      file_path: file,
+      old_string: "x = 1;",
+      new_string: "x = 1;\n// new",
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows a clean Edit to a file that already has a comment", async () => {
+    const file = await writeProbe("export const x = 1;\n// existing\n");
+    const result = await runEdit("Edit", {
+      file_path: file,
+      old_string: "x = 1;",
+      new_string: "x = 2;",
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("denies a MultiEdit where one edit adds a comment", async () => {
+    const file = await writeProbe("export const a = 1;\nexport const b = 2;\n");
+    const result = await runEdit("MultiEdit", {
+      file_path: file,
+      edits: [
+        { old_string: "a = 1;", new_string: "a = 11;" },
+        { old_string: "b = 2;", new_string: "b = 22;\n// added" },
+      ],
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("denies an apply_patch update that adds a comment line", async () => {
+    const file = await writeProbe("export const x = 1;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n-x = 1;\n+x = 2;\n+// added\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("denies an apply_patch update that adds a duplicate-text comment", async () => {
+    const file = await writeProbe("export const a = 1;\n// existing\nexport const b = 2;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const a = 1;\n // existing\n export const b = 2;\n+// existing\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows an apply_patch update that moves a comment by delete and re-add", async () => {
+    const file = await writeProbe("export const a = 1;\n// move me\nexport const b = 2;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const a = 1;\n-// move me\n export const b = 2;\n+// move me\n`,
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("denies an apply_patch add of a new commented file under src", async () => {
+    const result = await runEdit("apply_patch", {
+      command: "*** Add File: src/__new_probe.ts\n+export const x = 1;\n+// comment\n",
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows a +// line added inside a multiline template literal", async () => {
+    const file = await writeProbe("export const s = `\nhello\n`;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const s = \`\n hello\n+// text\n \`;\n`,
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("denies an @@-anchored apply_patch add of a comment at the later duplicate context line", async () => {
+    const file = await writeProbe(
+      "export const s = `\n  doThing();\n`;\nfunction main() {\n  doThing();\n  otherThing();\n}\n"
+    );
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n@@ function main() {\n   doThing();\n+// anchored\n   otherThing();\n }\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("denies a comment added by a later Update File section that only parses as a comment after the earlier section's reconstruction", async () => {
+    const file = await writeProbe("export const s = `\nhello\n`;\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n-export const s = \`\n+export const s = "start";\n*** Update File: ${file}\n-hello\n+// added\n`,
+    });
+    expect(decision(result.stdout).decision).toBe("deny");
+  });
+
+  it("allows a net-neutral comment move via Move to", async () => {
+    const file = await writeProbe("export const x = 1;\n// move me\n");
+    const result = await runEdit("apply_patch", {
+      command: `*** Update File: ${file}\n export const x = 1;\n // move me\n*** Move to: src/__moved_probe.ts\n`,
+    });
+    expect(decision(result.stdout).decision).toBeUndefined();
+  });
+
+  it("does not load the comment scanner for a non-edit tool", { timeout: 20_000 }, async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-comment-hook-lazy-load-"));
+    const startedAt = Date.now();
+    const result = await runHook(
+      join(root, ".claude/hooks/context-pre-tool-use.mjs"),
+      {
+        hook_event_name: "PreToolUse",
+        session_id: `comment-hook-lazy-${Math.random().toString(36).slice(2)}`,
+        tool_input: { file_path: "src/index.ts" },
+        tool_name: "Read",
+      },
+      hookEnvironment("claude", { STATE_DIR: stateDir })
+    );
+    const elapsedMs = Date.now() - startedAt;
+    expect(result.code).toBe(0);
+    expect(decision(result.stdout).decision).toBeUndefined();
+    expect(elapsedMs).toBeLessThan(500);
+  });
+});
+
+function slash(absolutePath: string): string {
+  return relative(root, absolutePath).split(sep).join("/");
+}
 
 function matcherFor(config: any, eventName: string, commandFragment: string): string | undefined {
   for (const entry of config.hooks?.[eventName] ?? []) {

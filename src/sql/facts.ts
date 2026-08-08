@@ -5,6 +5,7 @@ import type { AstNode } from "./ast.js";
 import {
   asRecord,
   astStatements,
+  qualifiedName,
   rangeVarName,
   readArray,
   readBoolean,
@@ -463,6 +464,12 @@ export function statementFacts(
   }
   if (tag === "CreateFunctionStmt") {
     Object.assign(facts, functionFacts(node));
+  }
+  if (tag === "CreateTrigStmt") {
+    const triggerFunction = qualifiedName(node.funcname);
+    if (triggerFunction) {
+      facts.triggerFunction = `${triggerFunction.schema}.${triggerFunction.name}`;
+    }
   }
   if (tag === "ViewStmt") {
     Object.assign(facts, viewFacts(node));

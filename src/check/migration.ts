@@ -8,6 +8,7 @@ import {
   columnFacts,
   functionIdentity,
   objectWithArgsIdentity,
+  qualifiedName,
   rangeVarName,
   readArray,
   readBoolean,
@@ -120,6 +121,8 @@ interface StatementOrderFacts {
   columnReferences: Set<string>;
   createdColumns: Set<string>;
   createdRelations: Set<string>;
+  droppedColumns: Set<string>;
+  droppedRelations: Set<string>;
   references: Set<string>;
   statement: AstStatement;
 }
@@ -137,6 +140,8 @@ async function forwardReferenceOrderDiagnostics(
       columnReferences: new Set(dependencies.columnReferences),
       createdColumns: createdColumnIdentities(statement),
       createdRelations: createdRelationIdentities(statement),
+      droppedColumns: droppedColumnIdentities(statement),
+      droppedRelations: droppedRelationIdentities(statement),
       references: new Set(dependencies.references),
       statement,
     });
@@ -148,6 +153,15 @@ async function forwardReferenceOrderDiagnostics(
     if (!current) {
       continue;
     }
+    const presentDrops = new Set(
+      [...current.droppedRelations].filter((relation) =>
+        relationPresentBeforeDrop(facts, index, relation)
+      )
+    );
+    removeAll(laterRelations, presentDrops);
+    removeColumnsForRelations(laterColumns, presentDrops, (relation, identity) =>
+      columnExistedBeforeDrop(facts, index, relation, identity)
+    );
     const forwardRelations = [...current.references].filter((reference) =>
       laterRelations.has(reference)
     );
@@ -211,6 +225,9 @@ function createdRelationIdentities(statement: AstStatement): Set<string> {
   if (statement.tag === "CreateStmt") {
     addRangeVarIdentity(identities, node.relation);
   }
+  if (statement.tag === "CreateForeignTableStmt") {
+    addRangeVarIdentity(identities, asRecord(node.base)?.relation);
+  }
   if (statement.tag === "ViewStmt") {
     addRangeVarIdentity(identities, node.view);
   }
@@ -228,14 +245,15 @@ function createdColumnIdentities(statement: AstStatement): Set<string> {
   }
   if (statement.tag === "CreateStmt") {
     const relation = relationIdentity(node.relation);
-    if (!relation) {
-      return identities;
+    if (relation) {
+      addTableColumnFacts(identities, relation, node.tableElts);
     }
-    for (const item of readArray(node.tableElts)) {
-      const facts = columnFacts(asRecord(item));
-      if (facts) {
-        identities.add(`${relation}.${facts.name}`);
-      }
+  }
+  if (statement.tag === "CreateForeignTableStmt") {
+    const base = asRecord(node.base) ?? node;
+    const relation = relationIdentity(base.relation);
+    if (relation) {
+      addTableColumnFacts(identities, relation, base.tableElts);
     }
   }
   if (statement.tag === "AlterTableStmt") {
@@ -257,11 +275,69 @@ function createdColumnIdentities(statement: AstStatement): Set<string> {
   return identities;
 }
 
+function addTableColumnFacts(identities: Set<string>, relation: string, tableElts: unknown): void {
+  for (const item of readArray(tableElts)) {
+    const facts = columnFacts(asRecord(item));
+    if (facts) {
+      identities.add(`${relation}.${facts.name}`);
+    }
+  }
+}
+
+function droppedColumnIdentities(statement: AstStatement): Set<string> {
+  const node = asRecord(statement.node[statement.tag]);
+  const identities = new Set<string>();
+  if (!node || statement.tag !== "AlterTableStmt") {
+    return identities;
+  }
+  const relation = relationIdentity(node.relation);
+  if (!relation) {
+    return identities;
+  }
+  for (const item of readArray(node.cmds)) {
+    const command = asRecord(asRecord(item)?.AlterTableCmd);
+    if (readString(command?.subtype) !== "AT_DropColumn") {
+      continue;
+    }
+    const name = readString(command?.name);
+    if (name) {
+      identities.add(`${relation}.${name}`);
+    }
+  }
+  return identities;
+}
+
 function addRangeVarIdentity(into: Set<string>, value: unknown): void {
   const identity = relationIdentity(value);
   if (identity) {
     into.add(identity);
   }
+}
+
+const RELATION_DROP_REMOVE_TYPES = new Set([
+  "OBJECT_FOREIGN_TABLE",
+  "OBJECT_MATVIEW",
+  "OBJECT_SEQUENCE",
+  "OBJECT_TABLE",
+  "OBJECT_VIEW",
+]);
+
+function droppedRelationIdentities(statement: AstStatement): Set<string> {
+  const identities = new Set<string>();
+  if (statement.tag !== "DropStmt") {
+    return identities;
+  }
+  const node = asRecord(statement.node.DropStmt);
+  if (!(node && RELATION_DROP_REMOVE_TYPES.has(readString(node.removeType) ?? ""))) {
+    return identities;
+  }
+  for (const object of readArray(node.objects)) {
+    const name = qualifiedName(object);
+    if (name) {
+      identities.add(`${name.schema}.${name.name}`);
+    }
+  }
+  return identities;
 }
 
 function relationIdentity(value: unknown): string | undefined {
@@ -273,6 +349,74 @@ function addAll<T>(into: Set<T>, values: Iterable<T>): void {
   for (const value of values) {
     into.add(value);
   }
+}
+
+function removeAll<T>(from: Set<T>, values: Iterable<T>): void {
+  for (const value of values) {
+    from.delete(value);
+  }
+}
+
+function removeColumnsForRelations(
+  columns: Set<string>,
+  relations: ReadonlySet<string>,
+  existedBeforeDrop: (relation: string, identity: string) => boolean
+): void {
+  for (const identity of [...columns]) {
+    for (const relation of relations) {
+      if (!identity.startsWith(`${relation}.`)) {
+        continue;
+      }
+      if (existedBeforeDrop(relation, identity)) {
+        columns.delete(identity);
+      }
+      break;
+    }
+  }
+}
+
+function relationPresentBeforeDrop(
+  facts: readonly StatementOrderFacts[],
+  dropIndex: number,
+  relation: string
+): boolean {
+  for (let index = dropIndex - 1; index >= 0; index -= 1) {
+    const fact = facts[index];
+    if (!fact) {
+      continue;
+    }
+    if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.createdRelations.has(relation)) {
+      return true;
+    }
+  }
+  return true;
+}
+
+function columnExistedBeforeDrop(
+  facts: readonly StatementOrderFacts[],
+  dropIndex: number,
+  relation: string,
+  identity: string
+): boolean {
+  for (let index = dropIndex - 1; index >= 0; index -= 1) {
+    const fact = facts[index];
+    if (!fact) {
+      continue;
+    }
+    if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.droppedColumns.has(identity)) {
+      return false;
+    }
+    if (fact.createdColumns.has(identity)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function functionPublicExecuteDiagnostics(statements: readonly AstStatement[]): Diagnostic[] {

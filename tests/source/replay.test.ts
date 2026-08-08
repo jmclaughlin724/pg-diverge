@@ -166,7 +166,7 @@ describe("migrations source replay", () => {
     expect(first.formatVersion).toBe(MODEL_FORMAT_VERSION);
     expect(first.objects).toHaveLength(246);
     expect(first.fingerprint).toBe(
-      "fed6e663f9966b6d445efa492f6385006d75a34c5035985616ab1717c5a3e710"
+      "82be859027188f6d351c75fcaf8f9304ba5fe4dbf23bca21be5c64f2ff6652e1"
     );
     expect(second.objects.map(({ hash, key }) => ({ hash, key }))).toEqual(
       first.objects.map(({ hash, key }) => ({ hash, key }))
@@ -1857,6 +1857,35 @@ GRANT SELECT(id, token) ON app.sessions TO app_worker;`,
     expect(grants[0]?.sql).toBe(
       'GRANT INSERT, SELECT ("id", "token") ON TABLE "app"."sessions" TO "app_worker"'
     );
+    expect(model.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("replays a covering revoke followed by a re-grant as the re-granted state", async () => {
+    const files: [string, string][] = [
+      [
+        "20240101000000_grant.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.sessions (id integer, token text);
+GRANT INSERT, SELECT, UPDATE ON app.sessions TO app_worker;`,
+      ],
+      [
+        "20240102000000_regrant.sql",
+        `REVOKE INSERT, SELECT, UPDATE ON app.sessions FROM app_worker;
+GRANT INSERT, SELECT (id, token), UPDATE (token) ON app.sessions TO app_worker;`,
+      ],
+    ];
+    const model = await extractMigrations(files);
+    const declared = await extractDirectory(files);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.verb).toBe("GRANT");
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT", "UPDATE"]);
+    expect(grants[0]?.metadata.columnPrivileges).toEqual({
+      SELECT: ["id", "token"],
+      UPDATE: ["token"],
+    });
     expect(model.fingerprint).toBe(declared.fingerprint);
   });
 

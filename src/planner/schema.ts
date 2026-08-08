@@ -56,8 +56,11 @@ export function planSchemaDiff(
   appendReplacedObjectDependents(operations, from, to, config, migrationCorpus);
   appendChangedColumnBlockingDependents(operations, from, to, config, migrationCorpus);
   appendDependencyProofDiagnostics(operations, from, to);
-  const sortedOperations = sortOperations(operations, diagnostics);
-  appendOperationDiagnostics(diagnostics, operations);
+  const sortedOperations = sortOperations(
+    suppressReplacedRelationGrantDrops(operations),
+    diagnostics
+  );
+  appendOperationDiagnostics(diagnostics, sortedOperations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
     diagnostics.push(emptyPlanDriftDiagnostic(fromMap, toMap, from, to));
   }
@@ -244,6 +247,38 @@ function isRelationStateForDroppedOwner(
   );
 }
 
+const grantOwnerReplaceKinds = new Set<ObjectKind>([
+  "foreign-table",
+  "materialized-view",
+  "table",
+  "view",
+]);
+
+function suppressReplacedRelationGrantDrops(
+  operations: MigrationOperation[]
+): MigrationOperation[] {
+  const replacedIdentities = new Set<string>();
+  for (const operation of operations) {
+    if (
+      operation.kind === "replace" &&
+      operation.destructive &&
+      grantOwnerReplaceKinds.has(operation.ref.kind)
+    ) {
+      replacedIdentities.add(refIdentity(operation.ref));
+    }
+  }
+  if (replacedIdentities.size === 0) {
+    return operations;
+  }
+  return operations.filter((operation) => {
+    if (operation.kind !== "drop" || operation.ref.kind !== "grant") {
+      return true;
+    }
+    const target = operation.before?.metadata.targetIdentity;
+    return typeof target !== "string" || !replacedIdentities.has(target);
+  });
+}
+
 function appendOperationDiagnostics(
   diagnostics: Diagnostic[],
   operations: MigrationOperation[]
@@ -258,6 +293,7 @@ function objectMap(objects: SchemaObject[]): Map<string, SchemaObject> {
 
 const replacedDependencyKinds = new Set<ObjectKind>([
   "domain",
+  "foreign-table",
   "materialized-view",
   "table",
   "type",
@@ -493,6 +529,7 @@ function appendChangedColumnBlockingDependents(
     affectedRefs: new Map(),
     dependencyIdentities: new Set(),
     fromKeys: new Set(from.objects.map((object) => object.key)),
+    fromByKey,
     operationKeys: new Set(operations.map((operation) => operation.key)),
   };
   for (const tableOperation of operations) {
@@ -560,7 +597,7 @@ function appendChangedColumnBlockingDependent(
   }
   const before = fromByKey.get(object.key);
   const directlyAffected = before !== undefined && dependsOnAnyColumn(before, changedColumns);
-  if (!(directlyAffected || isAffectedDependent(object, context.dependencyIdentities))) {
+  if (!(directlyAffected || isAffectedDependent(object, context.dependencyIdentities, fromByKey))) {
     return false;
   }
   let changed = false;
@@ -668,6 +705,7 @@ function appendReplacedObjectDependents(
 interface ReplacedDependentContext {
   affectedRefs: Map<string, ObjectRef>;
   dependencyIdentities: Set<string>;
+  fromByKey: ReadonlyMap<string, SchemaObject>;
   fromKeys: Set<string>;
   operationKeys: Set<string>;
 }
@@ -689,6 +727,7 @@ function replacedDependentContext(
     affectedRefs: new Map(),
     dependencyIdentities: new Set(),
     fromKeys: new Set(from.objects.map((object) => object.key)),
+    fromByKey: new Map(from.objects.map((object) => [object.key, object])),
     operationKeys: new Set(operations.map((operation) => operation.key)),
   };
   for (const object of replacedObjects) {
@@ -723,7 +762,7 @@ function appendAffectedDependent(
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  if (!isAffectedDependent(object, context.dependencyIdentities)) {
+  if (!isAffectedDependent(object, context.dependencyIdentities, context.fromByKey)) {
     return false;
   }
   let changed = false;
@@ -748,7 +787,13 @@ function appendBlockingDependentPreDrop(
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  if (!blockingObjectDependentKinds.has(object.ref.kind)) {
+  if (
+    !(
+      blockingObjectDependentKinds.has(object.ref.kind) ||
+      isCrossTableRelationDependent(object, context.dependencyIdentities) ||
+      isTriggerDependentOnAffectedRoutine(object, context.dependencyIdentities, context.fromByKey)
+    )
+  ) {
     return false;
   }
   if (!(context.fromKeys.has(object.key) || targetOnlyReplayPreDropKinds.has(object.ref.kind))) {
@@ -763,6 +808,21 @@ function appendBlockingDependentPreDrop(
   }
   markPreDroppedReplacement(object.key, operations);
   return changed;
+}
+
+function isTriggerDependentOnAffectedRoutine(
+  object: SchemaObject,
+  dependencyIdentities: ReadonlySet<string>,
+  fromByKey: ReadonlyMap<string, SchemaObject>
+): boolean {
+  if (object.ref.kind !== "trigger") {
+    return false;
+  }
+  const candidates = [object, fromByKey.get(object.key)];
+  return candidates.some((candidate) => {
+    const triggerFunction = candidate?.metadata.triggerFunction;
+    return typeof triggerFunction === "string" && dependencyIdentities.has(triggerFunction);
+  });
 }
 
 function markPreDroppedReplacement(key: string, operations: MigrationOperation[]): void {
@@ -802,7 +862,11 @@ function appendAffectedComments(
   }
 }
 
-function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<string>): boolean {
+function isAffectedDependent(
+  object: SchemaObject,
+  dependencyIdentities: Set<string>,
+  fromByKey: ReadonlyMap<string, SchemaObject>
+): boolean {
   const tableIdentity = tableRefIdentity(object.ref);
   if (
     relationDependentKinds.has(object.ref.kind) &&
@@ -817,10 +881,29 @@ function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<str
   ) {
     return true;
   }
+  if (isCrossTableRelationDependent(object, dependencyIdentities)) {
+    return true;
+  }
+  if (isTriggerDependentOnAffectedRoutine(object, dependencyIdentities, fromByKey)) {
+    return true;
+  }
   return (
     object.ref.kind === "grant" &&
     typeof object.metadata.targetIdentity === "string" &&
     dependencyIdentities.has(object.metadata.targetIdentity)
+  );
+}
+
+function isCrossTableRelationDependent(
+  object: SchemaObject,
+  dependencyIdentities: Set<string>
+): boolean {
+  if (!relationDependentKinds.has(object.ref.kind)) {
+    return false;
+  }
+  const ownTable = tableRefIdentity(object.ref);
+  return object.dependencies.some(
+    (dependency) => dependencyIdentities.has(dependency) && dependency !== ownTable
   );
 }
 

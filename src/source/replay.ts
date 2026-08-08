@@ -51,7 +51,7 @@ import type {
   SupaschemaConfig,
   TableColumn,
 } from "../types.js";
-import { normalizeSourceObjects } from "./normalize.js";
+import { coveringRevokeForRegrant, normalizeSourceObjects } from "./normalize.js";
 
 interface ReplayResult {
   diagnostics: Diagnostic[];
@@ -419,6 +419,28 @@ function isIdempotentDuplicateCreateStatement(
   );
 }
 
+async function applyRegrantNet(
+  object: SchemaObject,
+  existing: SchemaObject,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext
+): Promise<ReplayResult | undefined> {
+  if (object.metadata.verb !== "GRANT") {
+    return;
+  }
+  const regrantNet = await coveringRevokeForRegrant(objects, existing, object, {
+    normalize: context.normalize,
+  });
+  if (!regrantNet) {
+    return;
+  }
+  for (const removed of regrantNet.remove) {
+    objects.delete(removed.key);
+  }
+  objects.set(object.key, regrantNet.replacement ?? object);
+  return emptyResult();
+}
+
 async function applyExtractedObject(
   statement: AstStatement,
   object: SchemaObject,
@@ -435,6 +457,10 @@ async function applyExtractedObject(
   }
   const existing = objects.get(object.key);
   if (existing && isReplayPrivilegeObject(object)) {
+    const regrantResult = await applyRegrantNet(object, existing, objects, context);
+    if (regrantResult) {
+      return regrantResult;
+    }
     return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
   }
   if (existing && statement.tag === "AlterTableStmt" && object.ref.kind === "constraint") {

@@ -1,4 +1,5 @@
 import { parse as parseShell } from "sh-syntax";
+import { jsTsComments } from "../../lib/source-comments.mjs";
 import { run } from "../lib/process.js";
 import { readText } from "../lib/repository.js";
 import { parse as parseJsTs, ts } from "../lib/typescript-ast.js";
@@ -41,7 +42,7 @@ export async function changeDisciplineViolations(
   return [
     ...forbiddenFileNameViolations(codeFiles),
     ...exportOnlyModuleViolations(jsTsFiles, root),
-    ...jsTsCommentViolations(jsTsFiles, root),
+    ...(await jsTsCommentViolations(jsTsFiles, root)),
     ...jsTsTypeAssertionViolations(jsTsFiles, root),
     ...jsTsCopiedEnumTupleViolations(jsTsFiles, root),
     ...jsTsDeferredMarkerViolations(jsTsFiles, root),
@@ -85,20 +86,19 @@ function exportOnlyModuleViolations(candidates, root) {
   });
 }
 
-function jsTsCommentViolations(candidates, root) {
-  return candidates.flatMap((file) => {
-    const text = readText(file, root);
-    const source = parseJsTs(text, { fileName: file });
-    const ranges = new Map();
-    collectJsTsCommentRanges(source, text, ranges);
-    return [...ranges.values()]
-      .sort((left, right) => left.pos - right.pos)
-      .map((range) => {
-        const location = source.getLineAndCharacterOfPosition(range.pos);
-        const kind = range.kind === ts.SyntaxKind.SingleLineCommentTrivia ? "line" : "block";
-        return `${file}:${location.line + 1}:${location.character + 1} contains a ${kind} comment; move durable explanation to the owning rule, test, or docs surface.`;
-      });
-  });
+async function jsTsCommentViolations(candidates, root) {
+  return (
+    await Promise.all(
+      candidates.map(async (file) =>
+        (
+          await jsTsComments(file, readText(file, root))
+        ).map(
+          (comment) =>
+            `${file}:${comment.line}:${comment.character} contains a ${comment.kind} comment; move durable explanation to the owning rule, test, or docs surface.`
+        )
+      )
+    )
+  ).flat();
 }
 
 function jsTsTypeAssertionViolations(candidates, root) {
@@ -237,23 +237,6 @@ function monetizationSurfaceViolations(candidates, root) {
       return `${file}:${location.line + 1}:${location.character + 1} contains monetization term ${term}; keep checkout, Stripe, GitHub Marketplace, and license issuance implementation outside the public repository.`;
     });
   });
-}
-
-function collectJsTsCommentRanges(node, text, ranges) {
-  for (const range of ts.getLeadingCommentRanges(text, node.pos) ?? []) {
-    addJsTsCommentRange(range, text, ranges);
-  }
-  for (const range of ts.getTrailingCommentRanges(text, node.end) ?? []) {
-    addJsTsCommentRange(range, text, ranges);
-  }
-  ts.forEachChild(node, (child) => collectJsTsCommentRanges(child, text, ranges));
-}
-
-function addJsTsCommentRange(range, text, ranges) {
-  if (range.pos === 0 && text.startsWith("#!")) {
-    return;
-  }
-  ranges.set(`${range.pos}:${range.end}`, range);
 }
 
 function collectJsTsTypeAssertionViolations(node, _source, found) {
