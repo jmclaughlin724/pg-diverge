@@ -51,7 +51,7 @@ import type {
   SupaschemaConfig,
   TableColumn,
 } from "../types.js";
-import { normalizeSourceObjects } from "./normalize.js";
+import { normalizeSourceObjects, privilegeTargetKey } from "./normalize.js";
 
 interface ReplayResult {
   diagnostics: Diagnostic[];
@@ -419,6 +419,46 @@ function isIdempotentDuplicateCreateStatement(
   );
 }
 
+async function applyReplayGrantTransition(
+  object: SchemaObject,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string,
+  statement: string
+): Promise<ReplayResult> {
+  const targetKey = privilegeTargetKey(object);
+  const existing = [...objects.values()].filter(
+    (candidate) => candidate.ref.kind === "grant" && privilegeTargetKey(candidate) === targetKey
+  );
+  if (existing.length === 0) {
+    objects.set(object.key, object);
+    return emptyResult();
+  }
+  const diagnostics: Diagnostic[] = [];
+  const normalized = await normalizeSourceObjects([...existing, object], diagnostics, {
+    normalize: context.normalize,
+  });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: undefined };
+  }
+  const grants = normalized.filter((candidate) => candidate.ref.kind === "grant");
+  if (new Set(grants.map((candidate) => candidate.key)).size !== grants.length) {
+    return orderGap(
+      `privilege statements for ${object.key} could not be merged safely`,
+      file,
+      statement,
+      object.ref
+    );
+  }
+  for (const previous of existing) {
+    objects.delete(previous.key);
+  }
+  for (const grant of grants) {
+    objects.set(grant.key, grant);
+  }
+  return emptyResult();
+}
+
 async function applyExtractedObject(
   statement: AstStatement,
   object: SchemaObject,
@@ -433,8 +473,11 @@ async function applyExtractedObject(
     objects.delete(object.key);
     return emptyResult();
   }
+  if (object.ref.kind === "grant") {
+    return await applyReplayGrantTransition(object, objects, context, file, statement.text);
+  }
   const existing = objects.get(object.key);
-  if (existing && isReplayPrivilegeObject(object)) {
+  if (existing && object.ref.kind === "default-privilege") {
     return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
   }
   if (existing && statement.tag === "AlterTableStmt" && object.ref.kind === "constraint") {
@@ -498,10 +541,6 @@ async function mergeReplayPrivilege(
     objects.delete(incoming.key);
   }
   return emptyResult();
-}
-
-function isReplayPrivilegeObject(object: SchemaObject): boolean {
-  return object.ref.kind === "grant" || object.ref.kind === "default-privilege";
 }
 
 function isReplaceStatement(statement: AstStatement): boolean {

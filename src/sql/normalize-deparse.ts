@@ -68,14 +68,7 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
     }
     let text: string;
     try {
-      text = deparseSync(
-        JSON.parse(
-          JSON.stringify({
-            stmts: [{ stmt: statement.node }],
-            version: 170_004,
-          })
-        )
-      );
+      text = deparseSync(JSON.parse(JSON.stringify(statement.node)));
     } catch (error) {
       diagnostics.push(
         diagnostic(

@@ -1,12 +1,31 @@
-import typescript from "typescript";
+import { createRequire } from "node:module";
 
-export const ts = typescript;
+const require = createRequire(import.meta.url);
+
+let loadedTypescript;
+
+function loadTypescript() {
+  if (loadedTypescript === undefined) {
+    loadedTypescript = require("typescript");
+  }
+  return loadedTypescript;
+}
+
+export const ts = new Proxy(
+  {},
+  {
+    get(_target, property) {
+      return loadTypescript()[property];
+    },
+  }
+);
 
 export function parse(text, { fileName = "inline.ts", scriptKind } = {}) {
-  return ts.createSourceFile(
+  const tsApi = loadTypescript();
+  return tsApi.createSourceFile(
     fileName,
     text,
-    ts.ScriptTarget.Latest,
+    tsApi.ScriptTarget.Latest,
     true,
     scriptKind ?? scriptKindForFile(fileName)
   );
@@ -19,23 +38,24 @@ export function parseScript(text, name = "inline.mjs") {
 export function forEachNode(sourceFile, callback) {
   function visit(node) {
     callback(node);
-    ts.forEachChild(node, visit);
+    loadTypescript().forEachChild(node, visit);
   }
   visit(sourceFile);
 }
 
 function scriptKindForFile(fileName) {
+  const tsApi = loadTypescript();
   if (fileName.endsWith(".tsx")) {
-    return ts.ScriptKind.TSX;
+    return tsApi.ScriptKind.TSX;
   }
   if (fileName.endsWith(".jsx")) {
-    return ts.ScriptKind.JSX;
+    return tsApi.ScriptKind.JSX;
   }
   if (fileName.endsWith(".json")) {
-    return ts.ScriptKind.JSON;
+    return tsApi.ScriptKind.JSON;
   }
   if (fileName.endsWith(".js") || fileName.endsWith(".mjs") || fileName.endsWith(".cjs")) {
-    return ts.ScriptKind.JS;
+    return tsApi.ScriptKind.JS;
   }
-  return ts.ScriptKind.TS;
+  return tsApi.ScriptKind.TS;
 }

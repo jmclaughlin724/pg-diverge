@@ -717,7 +717,7 @@ export function commentObjectFromAst(
     return;
   }
   return buildCommentObject({
-    description: readString(node.comment) ?? stringValue(node.comment) ?? null,
+    description: readString(node.comment) ?? null,
     ...(file === undefined ? {} : { file }),
     ordinal,
     sql: statement,

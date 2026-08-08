@@ -8,6 +8,7 @@ import {
   columnFacts,
   functionIdentity,
   objectWithArgsIdentity,
+  qualifiedName,
   rangeVarName,
   readArray,
   readBoolean,
@@ -120,6 +121,11 @@ interface StatementOrderFacts {
   columnReferences: Set<string>;
   createdColumns: Set<string>;
   createdRelations: Set<string>;
+  createdRelationsWithUnknownColumns: Set<string>;
+  droppedColumns: Set<string>;
+  droppedRelationSchemas: Map<string, string>;
+  droppedRelations: Set<string>;
+  droppedSchemas: Set<string>;
   references: Set<string>;
   statement: AstStatement;
 }
@@ -131,23 +137,53 @@ async function forwardReferenceOrderDiagnostics(
   const diagnostics: Diagnostic[] = [];
   for (const statement of statements) {
     const dependencies = await extractStatementDependencies(statement);
+    const droppedRelations = droppedRelationFacts(statement);
     diagnostics.push(...dependencies.diagnostics);
     diagnostics.push(...securityDefinerSearchPathDiagnostics(statement, dependencies.routine));
     facts.push({
       columnReferences: new Set(dependencies.columnReferences),
       createdColumns: createdColumnIdentities(statement),
       createdRelations: createdRelationIdentities(statement),
+      createdRelationsWithUnknownColumns: createdRelationsWithUnknownColumns(statement),
+      droppedColumns: droppedColumnIdentities(statement),
+      droppedRelations: droppedRelations.identities,
+      droppedRelationSchemas: droppedRelations.schemas,
+      droppedSchemas: cascadingDroppedSchemaIdentities(statement),
       references: new Set(dependencies.references),
       statement,
     });
   }
   const laterRelations = new Set<string>();
+  const laterRelationsWithUnknownColumns = new Set<string>();
   const laterColumns = new Set<string>();
   for (let index = facts.length - 1; index >= 0; index -= 1) {
     const current = facts[index];
     if (!current) {
       continue;
     }
+    const presentDrops = new Set(
+      [...current.droppedRelations].filter((relation) =>
+        relationPresentBeforeDrop(
+          facts,
+          index,
+          relation,
+          current.droppedRelationSchemas.get(relation) ?? "public"
+        )
+      )
+    );
+    removeAll(
+      laterRelations,
+      [...presentDrops].filter((relation) => !laterRelationsWithUnknownColumns.has(relation))
+    );
+    removeColumnsForRelations(laterColumns, presentDrops, (relation, identity) =>
+      columnExistedBeforeDrop(
+        facts,
+        index,
+        relation,
+        current.droppedRelationSchemas.get(relation) ?? "public",
+        identity
+      )
+    );
     const forwardRelations = [...current.references].filter((reference) =>
       laterRelations.has(reference)
     );
@@ -168,6 +204,7 @@ async function forwardReferenceOrderDiagnostics(
       );
     }
     addAll(laterRelations, current.createdRelations);
+    addAll(laterRelationsWithUnknownColumns, current.createdRelationsWithUnknownColumns);
     addAll(laterColumns, current.createdColumns);
   }
   return diagnostics;
@@ -211,6 +248,9 @@ function createdRelationIdentities(statement: AstStatement): Set<string> {
   if (statement.tag === "CreateStmt") {
     addRangeVarIdentity(identities, node.relation);
   }
+  if (statement.tag === "CreateForeignTableStmt") {
+    addRangeVarIdentity(identities, asRecord(node.base)?.relation);
+  }
   if (statement.tag === "ViewStmt") {
     addRangeVarIdentity(identities, node.view);
   }
@@ -222,36 +262,137 @@ function createdRelationIdentities(statement: AstStatement): Set<string> {
 
 function createdColumnIdentities(statement: AstStatement): Set<string> {
   const node = asRecord(statement.node[statement.tag]);
+  if (!node) {
+    return new Set();
+  }
+  switch (statement.tag) {
+    case "CreateStmt":
+      return tableColumnIdentities(node.relation, node.tableElts);
+    case "CreateForeignTableStmt": {
+      const base = asRecord(node.base) ?? node;
+      return tableColumnIdentities(base.relation, base.tableElts);
+    }
+    case "CreateTableAsStmt":
+      return tableAsColumnIdentities(node);
+    case "AlterTableStmt":
+      return addedColumnIdentities(node);
+    default:
+      return new Set();
+  }
+}
+
+function tableColumnIdentities(relationNode: unknown, tableElts: unknown): Set<string> {
+  const identities = new Set<string>();
+  const relation = relationIdentity(relationNode);
+  if (relation) {
+    addTableColumnFacts(identities, relation, tableElts);
+  }
+  return identities;
+}
+
+function tableAsColumnIdentities(node: AstNode): Set<string> {
+  const identities = new Set<string>();
+  const relation = relationIdentity(asRecord(node.into)?.rel);
+  const columns = createdTableAsColumnNames(node);
+  if (!(relation && columns)) {
+    return identities;
+  }
+  for (const column of columns) {
+    identities.add(`${relation}.${column}`);
+  }
+  return identities;
+}
+
+function addedColumnIdentities(node: AstNode): Set<string> {
+  const identities = new Set<string>();
+  const relation = relationIdentity(node.relation);
+  if (!relation) {
+    return identities;
+  }
+  for (const item of readArray(node.cmds)) {
+    const command = asRecord(asRecord(item)?.AlterTableCmd);
+    if (readString(command?.subtype) !== "AT_AddColumn") {
+      continue;
+    }
+    const facts = columnFacts(asRecord(command?.def));
+    if (facts) {
+      identities.add(`${relation}.${facts.name}`);
+    }
+  }
+  return identities;
+}
+
+function createdRelationsWithUnknownColumns(statement: AstStatement): Set<string> {
+  const node = asRecord(statement.node[statement.tag]);
   const identities = new Set<string>();
   if (!node) {
     return identities;
   }
-  if (statement.tag === "CreateStmt") {
-    const relation = relationIdentity(node.relation);
-    if (!relation) {
-      return identities;
+  if (statement.tag === "CreateStmt" && readArray(node.inhRelations).length > 0) {
+    addRangeVarIdentity(identities, node.relation);
+  }
+  if (statement.tag === "CreateTableAsStmt" && createdTableAsColumnNames(node) === undefined) {
+    addRangeVarIdentity(identities, asRecord(node.into)?.rel);
+  }
+  return identities;
+}
+
+function createdTableAsColumnNames(node: AstNode): string[] | undefined {
+  const into = asRecord(node.into);
+  const declared = stringList(into?.colNames);
+  if (declared.length > 0) {
+    return declared;
+  }
+  const select = asRecord(asRecord(node.query)?.SelectStmt);
+  const targets = readArray(select?.targetList);
+  if (targets.length === 0) {
+    return;
+  }
+  const columns: string[] = [];
+  for (const item of targets) {
+    const target = asRecord(asRecord(item)?.ResTarget);
+    const name = readString(target?.name) ?? simpleColumnReferenceName(target?.val);
+    if (!name) {
+      return;
     }
-    for (const item of readArray(node.tableElts)) {
-      const facts = columnFacts(asRecord(item));
-      if (facts) {
-        identities.add(`${relation}.${facts.name}`);
-      }
+    columns.push(name);
+  }
+  return columns;
+}
+
+function simpleColumnReferenceName(value: unknown): string | undefined {
+  const column = asRecord(asRecord(value)?.ColumnRef);
+  const fields = stringList(column?.fields);
+  return fields.at(-1);
+}
+
+function addTableColumnFacts(identities: Set<string>, relation: string, tableElts: unknown): void {
+  for (const item of readArray(tableElts)) {
+    const facts = columnFacts(asRecord(item));
+    if (facts) {
+      identities.add(`${relation}.${facts.name}`);
     }
   }
-  if (statement.tag === "AlterTableStmt") {
-    const relation = relationIdentity(node.relation);
-    if (!relation) {
-      return identities;
+}
+
+function droppedColumnIdentities(statement: AstStatement): Set<string> {
+  const node = asRecord(statement.node[statement.tag]);
+  const identities = new Set<string>();
+  if (!node || statement.tag !== "AlterTableStmt") {
+    return identities;
+  }
+  const relation = relationIdentity(node.relation);
+  if (!relation) {
+    return identities;
+  }
+  for (const item of readArray(node.cmds)) {
+    const command = asRecord(asRecord(item)?.AlterTableCmd);
+    if (readString(command?.subtype) !== "AT_DropColumn") {
+      continue;
     }
-    for (const item of readArray(node.cmds)) {
-      const command = asRecord(asRecord(item)?.AlterTableCmd);
-      if (readString(command?.subtype) !== "AT_AddColumn") {
-        continue;
-      }
-      const facts = columnFacts(asRecord(command?.def));
-      if (facts) {
-        identities.add(`${relation}.${facts.name}`);
-      }
+    const name = readString(command?.name);
+    if (name) {
+      identities.add(`${relation}.${name}`);
     }
   }
   return identities;
@@ -264,6 +405,55 @@ function addRangeVarIdentity(into: Set<string>, value: unknown): void {
   }
 }
 
+const RELATION_DROP_REMOVE_TYPES = new Set([
+  "OBJECT_FOREIGN_TABLE",
+  "OBJECT_MATVIEW",
+  "OBJECT_SEQUENCE",
+  "OBJECT_TABLE",
+  "OBJECT_VIEW",
+]);
+
+interface DroppedRelationFacts {
+  identities: Set<string>;
+  schemas: Map<string, string>;
+}
+
+function droppedRelationFacts(statement: AstStatement): DroppedRelationFacts {
+  const identities = new Set<string>();
+  const schemas = new Map<string, string>();
+  if (statement.tag !== "DropStmt") {
+    return { identities, schemas };
+  }
+  const node = asRecord(statement.node.DropStmt);
+  if (!(node && RELATION_DROP_REMOVE_TYPES.has(readString(node.removeType) ?? ""))) {
+    return { identities, schemas };
+  }
+  for (const object of readArray(node.objects)) {
+    const name = qualifiedName(object);
+    if (name) {
+      const identity = `${name.schema}.${name.name}`;
+      identities.add(identity);
+      schemas.set(identity, name.schema);
+    }
+  }
+  return { identities, schemas };
+}
+
+function cascadingDroppedSchemaIdentities(statement: AstStatement): Set<string> {
+  if (statement.tag !== "DropStmt") {
+    return new Set();
+  }
+  const node = asRecord(statement.node.DropStmt);
+  if (
+    !node ||
+    readString(node.removeType) !== "OBJECT_SCHEMA" ||
+    readString(node.behavior) !== "DROP_CASCADE"
+  ) {
+    return new Set();
+  }
+  return new Set(stringList(node.objects));
+}
+
 function relationIdentity(value: unknown): string | undefined {
   const name = rangeVarName(value);
   return name ? `${name.schema}.${name.name}` : undefined;
@@ -273,6 +463,82 @@ function addAll<T>(into: Set<T>, values: Iterable<T>): void {
   for (const value of values) {
     into.add(value);
   }
+}
+
+function removeAll<T>(from: Set<T>, values: Iterable<T>): void {
+  for (const value of values) {
+    from.delete(value);
+  }
+}
+
+function removeColumnsForRelations(
+  columns: Set<string>,
+  relations: ReadonlySet<string>,
+  existedBeforeDrop: (relation: string, identity: string) => boolean
+): void {
+  for (const identity of [...columns]) {
+    for (const relation of relations) {
+      if (!identity.startsWith(`${relation}.`)) {
+        continue;
+      }
+      if (existedBeforeDrop(relation, identity)) {
+        columns.delete(identity);
+      }
+      break;
+    }
+  }
+}
+
+function relationPresentBeforeDrop(
+  facts: readonly StatementOrderFacts[],
+  dropIndex: number,
+  relation: string,
+  schema: string
+): boolean {
+  for (let index = dropIndex - 1; index >= 0; index -= 1) {
+    const fact = facts[index];
+    if (!fact) {
+      continue;
+    }
+    if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.droppedSchemas.has(schema)) {
+      return false;
+    }
+    if (fact.createdRelations.has(relation)) {
+      return true;
+    }
+  }
+  return true;
+}
+
+function columnExistedBeforeDrop(
+  facts: readonly StatementOrderFacts[],
+  dropIndex: number,
+  relation: string,
+  schema: string,
+  identity: string
+): boolean {
+  for (let index = dropIndex - 1; index >= 0; index -= 1) {
+    const fact = facts[index];
+    if (!fact) {
+      continue;
+    }
+    if (fact.droppedRelations.has(relation)) {
+      return false;
+    }
+    if (fact.droppedSchemas.has(schema)) {
+      return false;
+    }
+    if (fact.droppedColumns.has(identity)) {
+      return false;
+    }
+    if (fact.createdColumns.has(identity)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function functionPublicExecuteDiagnostics(statements: readonly AstStatement[]): Diagnostic[] {

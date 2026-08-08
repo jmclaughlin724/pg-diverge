@@ -163,6 +163,120 @@ $$;`);
     expect(grants.map((object) => object.metadata.verb)).toEqual(["GRANT"]);
   });
 
+  it("keeps re-grants that follow a revoke clearing earlier grants on the same target", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA crm;\nCREATE TABLE crm.contact_documents (id uuid, organization_id uuid, contact_id uuid, document_id uuid, attached_by uuid);\nGRANT SELECT, INSERT, UPDATE ON TABLE crm.contact_documents TO authenticated;\nREVOKE ALL ON TABLE crm.contact_documents FROM PUBLIC, anon, authenticated;\nGRANT SELECT ON TABLE crm.contact_documents TO authenticated;\nGRANT INSERT (id, organization_id, contact_id, document_id, attached_by) ON TABLE crm.contact_documents TO authenticated;\nGRANT UPDATE (contact_id, document_id) ON TABLE crm.contact_documents TO authenticated;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.verb).toBe("GRANT");
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT", "UPDATE"]);
+    expect(grants[0]?.metadata.columnPrivileges).toEqual({
+      INSERT: ["attached_by", "contact_id", "document_id", "id", "organization_id"],
+      UPDATE: ["contact_id", "document_id"],
+    });
+  });
+
+  it("does not resurrect a pre-revoke privilege that was never re-granted", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT DELETE, SELECT ON TABLE app.t TO app_user;\nREVOKE ALL ON TABLE app.t FROM app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual(["SELECT"]);
+  });
+
+  it("suppresses a revoke that overlaps no granted privilege on the target", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, status text);\nGRANT SELECT ON TABLE app.t TO app_user;\nREVOKE UPDATE (status) ON TABLE app.t FROM app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.verb).toBe("GRANT");
+    expect(grants[0]?.metadata.privileges).toEqual(["SELECT"]);
+  });
+
+  it("keeps a revoke that overlaps a granted privilege alongside the grant", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, status text);\nGRANT SELECT, UPDATE ON TABLE app.t TO app_user;\nREVOKE UPDATE (status) ON TABLE app.t FROM app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(2);
+    expect(grants.map((object) => object.metadata.verb)).toEqual(["GRANT", "REVOKE"]);
+  });
+
+  it("does not let a column-scoped revoke wipe earlier grants", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, token text);\nGRANT INSERT (id, token) ON TABLE app.t TO app_user;\nREVOKE INSERT (id) ON TABLE app.t FROM app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    const grant = grants.find((object) => object.metadata.verb === "GRANT");
+    expect(grant?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+    expect(grant?.metadata.columnPrivileges).toEqual({ INSERT: ["id", "token"] });
+    expect(grants.some((object) => object.metadata.verb === "REVOKE")).toBe(true);
+  });
+
+  it("leaves an ALL grant followed by a partial revoke to the existing netting lanes", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT ALL ON TABLE app.t TO app_user;\nREVOKE INSERT ON TABLE app.t FROM app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(0);
+  });
+
+  it("resolves interleaved partial revoke and regrant pairs to the net granted set", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT, INSERT ON TABLE app.t TO app_user;\nREVOKE SELECT ON TABLE app.t FROM app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\nREVOKE INSERT ON TABLE app.t FROM app_user;\nGRANT INSERT ON TABLE app.t TO app_user;\n"
+    );
+    const net = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT, INSERT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.verb).toBe("GRANT");
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+    expect(model.fingerprint).toBe(net.fingerprint);
+  });
+
+  it("replaces a table-wide grant with a revoke plus column-scoped re-grant", async () => {
+    const before = await modelFromSql(
+      "CREATE SCHEMA crm;\nCREATE TABLE crm.contact_documents (id uuid, organization_id uuid, contact_id uuid, document_id uuid, attached_by uuid);\nGRANT SELECT, INSERT, UPDATE ON TABLE crm.contact_documents TO authenticated;\n"
+    );
+    const after = await modelFromSql(
+      "CREATE SCHEMA crm;\nCREATE TABLE crm.contact_documents (id uuid, organization_id uuid, contact_id uuid, document_id uuid, attached_by uuid);\nGRANT SELECT, INSERT, UPDATE ON TABLE crm.contact_documents TO authenticated;\nREVOKE ALL ON TABLE crm.contact_documents FROM PUBLIC, anon, authenticated;\nGRANT SELECT ON TABLE crm.contact_documents TO authenticated;\nGRANT INSERT (id, organization_id, contact_id, document_id, attached_by) ON TABLE crm.contact_documents TO authenticated;\nGRANT UPDATE (contact_id, document_id) ON TABLE crm.contact_documents TO authenticated;\n"
+    );
+
+    expect(errors(before)).toEqual([]);
+    expect(errors(after)).toEqual([]);
+    const plan = planSchemaDiff(before, after);
+    const grantOperations = plan.operations.filter((operation) => operation.ref.kind === "grant");
+    expect(grantOperations).toHaveLength(1);
+    expect(grantOperations[0]?.kind).toBe("replace");
+    expect(grantOperations[0]?.destructive).toBe(false);
+    expect(grantOperations[0]?.blocked).toBe(false);
+    const sql = renderMigration(plan, { includeHeader: false });
+    expect(sql).toContain(
+      'REVOKE INSERT, SELECT, UPDATE ON TABLE "crm"."contact_documents" FROM "authenticated";'
+    );
+    expect(sql).toContain(
+      'GRANT INSERT ("attached_by", "contact_id", "document_id", "id", "organization_id"), SELECT, UPDATE ("contact_id", "document_id") ON TABLE "crm"."contact_documents" TO "authenticated";'
+    );
+    expect(sql.indexOf("REVOKE")).toBeLessThan(sql.indexOf("GRANT"));
+  });
+
   it("keeps revokes of built-in PUBLIC defaults and suppresses grants restating them", async () => {
     const model = await modelFromSql(
       "CREATE SCHEMA app;\nCREATE FUNCTION app.f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nREVOKE ALL ON FUNCTION app.f() FROM PUBLIC;\nCREATE FUNCTION app.g() RETURNS int LANGUAGE sql AS 'SELECT 2';\nGRANT EXECUTE ON FUNCTION app.g() TO PUBLIC;\n"
@@ -837,24 +951,23 @@ describe("rls facet merge", () => {
 });
 
 describe("comment state transitions", () => {
-  it("removes a prior comment with IS NULL", async () => {
-    const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS NULL;\n"
-    );
+  it("treats NULL and every empty-string spelling as comment deletion", async () => {
+    const model = await modelFromSql(`CREATE SCHEMA null_comment;
+CREATE SCHEMA standard_empty_comment;
+CREATE SCHEMA escape_empty_comment;
+CREATE SCHEMA unicode_empty_comment;
+COMMENT ON SCHEMA null_comment IS 'docs';
+COMMENT ON SCHEMA standard_empty_comment IS 'docs';
+COMMENT ON SCHEMA escape_empty_comment IS 'docs';
+COMMENT ON SCHEMA unicode_empty_comment IS 'docs';
+COMMENT ON SCHEMA null_comment IS NULL;
+COMMENT ON SCHEMA standard_empty_comment IS '';
+COMMENT ON SCHEMA escape_empty_comment IS E'';
+COMMENT ON SCHEMA unicode_empty_comment IS U&'';
+`);
 
     expect(errors(model)).toEqual([]);
     expect(model.objects.filter((object) => object.ref.kind === "comment")).toEqual([]);
-  });
-
-  it("keeps an empty-string comment as a distinct comment", async () => {
-    const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS '';\n"
-    );
-
-    expect(errors(model)).toEqual([]);
-    const comments = model.objects.filter((object) => object.ref.kind === "comment");
-    expect(comments).toHaveLength(1);
-    expect(comments[0]?.metadata.description).toBe("");
   });
 });
 

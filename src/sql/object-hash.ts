@@ -1,7 +1,17 @@
 import { sha256, stableJson } from "../hash.js";
 import type { ObjectRef } from "../types.js";
 
-const strippedKeys = new Set(["if_not_exists", "location", "replace", "stmt_len", "stmt_location"]);
+const strippedKeys = new Set([
+  "if_not_exists",
+  "list_end",
+  "list_start",
+  "location",
+  "replace",
+  "rexpr_list_end",
+  "rexpr_list_start",
+  "stmt_len",
+  "stmt_location",
+]);
 
 export function stripLocations(value: unknown): unknown {
   if (Array.isArray(value)) {

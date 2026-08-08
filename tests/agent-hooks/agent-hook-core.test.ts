@@ -209,18 +209,19 @@ describe("structured verification conflicts", () => {
     process.env.STATE_DIR = fixture.stateDir;
     const sessionId = "verification-conflict";
 
-    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
-    failedCommand(sessionId, "npm test", fixture);
-    expect(stop(sessionId, "Tests failed; the error remains.", fixture).output).toEqual({});
+    expect((await stop(sessionId, "Tests passed.", fixture)).output).toEqual({});
+    await failedCommand(sessionId, "npm test", fixture);
+    expect((await stop(sessionId, "Tests failed; the error remains.", fixture)).output).toEqual({});
     expect(
-      stop(sessionId, "Tests passed previously, but the current tests failed.", fixture).output
+      (await stop(sessionId, "Tests passed previously, but the current tests failed.", fixture))
+        .output
     ).toEqual({});
-    expect(stop(sessionId, "Tests passed.", fixture).output).toMatchObject({
+    expect((await stop(sessionId, "Tests passed.", fixture)).output).toMatchObject({
       decision: "block",
       reason: expect.stringContaining("test"),
     });
-    successfulCommand(sessionId, "npm test", fixture);
-    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
+    await successfulCommand(sessionId, "npm test", fixture);
+    expect((await stop(sessionId, "Tests passed.", fixture)).output).toEqual({});
   });
 
   it("requires structured Codex outcomes before recording verification evidence", async () => {
@@ -235,14 +236,22 @@ describe("structured verification conflicts", () => {
       tool_name: "Bash",
     };
 
-    handleAgentHookEvent("PostToolUse", payload, options);
-    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
+    await handleAgentHookEvent("PostToolUse", payload, options);
+    expect((await stop(sessionId, "Tests passed.", fixture)).output).toEqual({});
 
-    handleAgentHookEvent("PostToolUse", { ...payload, tool_response: { exit_code: 1 } }, options);
-    expect(stop(sessionId, "Tests passed.", fixture).output.decision).toBe("block");
+    await handleAgentHookEvent(
+      "PostToolUse",
+      { ...payload, tool_response: { exit_code: 1 } },
+      options
+    );
+    expect((await stop(sessionId, "Tests passed.", fixture)).output.decision).toBe("block");
 
-    handleAgentHookEvent("PostToolUse", { ...payload, tool_response: { exit_code: 0 } }, options);
-    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
+    await handleAgentHookEvent(
+      "PostToolUse",
+      { ...payload, tool_response: { exit_code: 0 } },
+      options
+    );
+    expect((await stop(sessionId, "Tests passed.", fixture)).output).toEqual({});
   });
 
   it("ignores hedging, decision menus, incidents, and raw response text", async () => {
@@ -259,13 +268,13 @@ describe("structured verification conflicts", () => {
       "Could tests pass after another change?",
       "Will tests pass?",
     ]) {
-      expect(stop(sessionId, message, fixture).output, message).toEqual({});
+      expect((await stop(sessionId, message, fixture)).output, message).toEqual({});
     }
 
     successfulCommand(sessionId, "npm test", fixture, {
       stdout: "Process exited with code 1; tests failed",
     });
-    expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
+    expect((await stop(sessionId, "Tests passed.", fixture)).output).toEqual({});
   });
 
   it("parses explicit verification claim grammar without subjective response scoring", () => {
@@ -321,12 +330,12 @@ describe("minimal private hook state", () => {
     const promptMarker = "do-not-persist-this-prompt";
     const commandMarker = "do-not-persist-this-command";
 
-    handleAgentHookEvent(
+    await handleAgentHookEvent(
       "UserPromptSubmit",
       { prompt: `$fastmcp ${promptMarker}`, session_id: sessionId },
       fixture.options
     );
-    successfulCommand(sessionId, `npm test -- ${commandMarker}`, fixture);
+    await successfulCommand(sessionId, `npm test -- ${commandMarker}`, fixture);
 
     const file = sessionStatePath({ session_id: sessionId });
     const serialized = await readFile(file, "utf8");
@@ -349,7 +358,7 @@ describe("minimal private hook state", () => {
     const oldDate = new Date(Date.now() - 60_000);
     await utimes(lockDirectory, oldDate, oldDate);
 
-    const result = handleAgentHookEvent(
+    const result = await handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: payload.session_id,
@@ -377,7 +386,7 @@ describe("minimal private hook state", () => {
       { mode: 0o600 }
     );
 
-    const result = handleAgentHookEvent(
+    const result = await handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: payload.session_id,
@@ -422,7 +431,7 @@ describe("minimal private hook state", () => {
     await utimes(lockDirectory, oldDate, oldDate);
     await utimes(unexpectedOwner, oldDate, oldDate);
 
-    const result = handleAgentHookEvent(
+    const result = await handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: payload.session_id,
@@ -481,7 +490,7 @@ describe("minimal private hook state", () => {
     const file = sessionStatePath(payload);
     const before = (await stat(file)).mtimeMs;
 
-    handleAgentHookEvent(
+    await handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: payload.session_id,
@@ -536,7 +545,7 @@ describe("minimal private hook state", () => {
 
     expect(readSessionState(expired).sessionId).toBe(expired.session_id);
     expect(existsSync(expiredFile)).toBe(true);
-    handleAgentHookEvent(
+    await handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: expired.session_id,
@@ -553,7 +562,7 @@ describe("minimal private hook state", () => {
     const malformedFile = sessionStatePath(malformed);
     await mkdir(dirname(malformedFile), { recursive: true, mode: 0o700 });
     await writeFile(malformedFile, "{not-json", { mode: 0o600 });
-    const result = handleAgentHookEvent(
+    const result = await handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: malformed.session_id,
@@ -676,14 +685,14 @@ async function hookFixture(): Promise<HookFixture> {
   };
 }
 
-function postTool(
+async function postTool(
   sessionId: string,
   toolName: string,
   toolInput: Record<string, unknown>,
   fixture: HookFixture,
   toolResponse: unknown = {}
 ) {
-  return handleAgentHookEvent(
+  return await handleAgentHookEvent(
     "PostToolUse",
     {
       hook_event_name: "PostToolUse",
@@ -696,8 +705,8 @@ function postTool(
   );
 }
 
-function failedCommand(sessionId: string, command: string, fixture: HookFixture) {
-  return handleAgentHookEvent(
+async function failedCommand(sessionId: string, command: string, fixture: HookFixture) {
+  return await handleAgentHookEvent(
     "PostToolUseFailure",
     {
       hook_event_name: "PostToolUseFailure",
@@ -709,17 +718,17 @@ function failedCommand(sessionId: string, command: string, fixture: HookFixture)
   );
 }
 
-function successfulCommand(
+async function successfulCommand(
   sessionId: string,
   command: string,
   fixture: HookFixture,
   toolResponse: Record<string, unknown> = {}
 ) {
-  return postTool(sessionId, "Bash", { command }, fixture, toolResponse);
+  return await postTool(sessionId, "Bash", { command }, fixture, toolResponse);
 }
 
-function stop(sessionId: string, message: string, fixture: HookFixture) {
-  return handleAgentHookEvent(
+async function stop(sessionId: string, message: string, fixture: HookFixture) {
+  return await handleAgentHookEvent(
     "Stop",
     { last_assistant_message: message, session_id: sessionId },
     fixture.options

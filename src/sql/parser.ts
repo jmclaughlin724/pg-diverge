@@ -28,22 +28,27 @@ export async function parseSqlAst(sql: string, file?: string): Promise<ParsedSql
   const cacheKey = sha256(sql);
   const cached = parseCache.get(cacheKey);
   if (cached) {
-    return withLocation(cached, file);
+    return withFile(cached, file);
   }
   const outcome = await parseUncached(sql);
-  if (parseCache.size >= parseCacheLimit) {
-    const evictCount = Math.max(1, Math.floor(parseCacheLimit * 0.2));
-    let removed = 0;
-    for (const key of parseCache.keys()) {
-      parseCache.delete(key);
-      removed += 1;
-      if (removed >= evictCount) {
-        break;
-      }
+  evictParseCacheIfFull();
+  parseCache.set(cacheKey, outcome);
+  return withFile(outcome, file);
+}
+
+function evictParseCacheIfFull(): void {
+  if (parseCache.size < parseCacheLimit) {
+    return;
+  }
+  const evictCount = Math.max(1, Math.floor(parseCacheLimit * 0.2));
+  let removed = 0;
+  for (const key of parseCache.keys()) {
+    parseCache.delete(key);
+    removed += 1;
+    if (removed >= evictCount) {
+      return;
     }
   }
-  parseCache.set(cacheKey, outcome);
-  return withLocation(outcome, file);
 }
 
 async function parseUncached(sql: string): Promise<ParsedSqlAst> {
@@ -89,7 +94,10 @@ async function loadParser(): Promise<PgParser | undefined> {
   return parser;
 }
 
-function withLocation(outcome: ParsedSqlAst, file: string | undefined): ParsedSqlAst {
+function withFile<T extends { diagnostics: Diagnostic[] }>(
+  outcome: T,
+  file: string | undefined
+): T {
   if (!file || outcome.diagnostics.length === 0) {
     return outcome;
   }

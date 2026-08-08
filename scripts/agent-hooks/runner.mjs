@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { recordToolEvidence } from "./command-evidence.mjs";
+import { commentFreeSource } from "./comment-free-source.mjs";
 import { runHookEntrypoint } from "./hook-entrypoint.mjs";
 import {
   mergeResult,
@@ -32,7 +33,7 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
         beginTurnState(payload, state);
       } else if (eventName === "PreToolUse") {
         selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [bashSafety], context);
+        result = runChecks(eventName, payload, [bashSafety, commentFreeSource], context);
       } else if (eventName === "PostToolUse") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [toolEvidence], context);

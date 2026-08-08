@@ -1,13 +1,23 @@
 import type { AstNode } from "./ast.js";
-import { asRecord, readArray, readNumber, readString, stringList, typeNameToSql } from "./ast.js";
+import {
+  asRecord,
+  readArray,
+  readBoolean,
+  readNumber,
+  readString,
+  stringList,
+  typeNameToSql,
+} from "./ast.js";
 import { stripLocations } from "./object-hash.js";
 
 interface CanonicalColumn {
   default?: unknown;
   generated?: unknown;
+  generatedKind?: string;
   identity?: string;
   name: string;
   notNull: boolean;
+  notNullEnforced?: boolean;
   type: string;
 }
 
@@ -61,6 +71,7 @@ export function canonicalTableShape(node: AstNode): Record<string, unknown> {
   for (const column of columns) {
     if (primaryColumns.has(column.name)) {
       column.notNull = true;
+      column.notNullEnforced ??= true;
     }
   }
   const shape: Record<string, unknown> = {
@@ -93,6 +104,7 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
     notNull: false,
     type: canonicalColumnType(columnDef.typeName),
   };
+  let previousConstraintType: string | undefined;
   for (const item of readArray(columnDef.constraints)) {
     const constraint = asRecord(asRecord(item)?.Constraint);
     const contype = readString(constraint?.contype);
@@ -102,6 +114,22 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
     switch (contype) {
       case "CONSTR_NOTNULL":
         column.notNull = true;
+        column.notNullEnforced =
+          constraint.is_enforced === undefined || readBoolean(constraint.is_enforced);
+        break;
+      case "CONSTR_ATTR_ENFORCED":
+        if (previousConstraintType === "CONSTR_NOTNULL") {
+          column.notNullEnforced = true;
+        } else {
+          constraints.push(canonicalConstraint(constraint, [name]));
+        }
+        break;
+      case "CONSTR_ATTR_NOT_ENFORCED":
+        if (previousConstraintType === "CONSTR_NOTNULL") {
+          column.notNullEnforced = false;
+        } else {
+          constraints.push(canonicalConstraint(constraint, [name]));
+        }
         break;
       case "CONSTR_NULL":
         break;
@@ -115,11 +143,13 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
         break;
       case "CONSTR_GENERATED":
         column.generated = stripLocations(constraint.raw_expr);
+        column.generatedKind = readString(constraint.generated_kind) ?? "s";
         break;
       default:
         constraints.push(canonicalConstraint(constraint, [name]));
         break;
     }
+    previousConstraintType = contype;
   }
   return column;
 }
@@ -304,6 +334,18 @@ function canonicalConstraintPayload(value: unknown): unknown {
   if (!record) {
     return value;
   }
+  const unifiedInPredicate = unifiedInPredicatePayload(record);
+  if (unifiedInPredicate) {
+    return unifiedInPredicate;
+  }
+  const unifiedBetween = unifiedBetweenPayload(record);
+  if (unifiedBetween) {
+    return unifiedBetween;
+  }
+  const constant = constantTypeCastPayload(record);
+  if (constant !== undefined) {
+    return constant;
+  }
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(record)) {
     result[key] =
@@ -312,6 +354,129 @@ function canonicalConstraintPayload(value: unknown): unknown {
         : canonicalConstraintPayload(child);
   }
   return result;
+}
+
+function unifiedInPredicatePayload(record: AstNode): Record<string, unknown> | undefined {
+  const expression = asRecord(record.A_Expr);
+  if (!expression) {
+    return;
+  }
+  const kind = readString(expression.kind);
+  if (kind !== "AEXPR_IN" && kind !== "AEXPR_OP_ANY" && kind !== "AEXPR_OP_ALL") {
+    return;
+  }
+  const quantifierOperator = asRecord(asRecord(readArray(expression.name)[0])?.String)?.sval;
+  if (kind === "AEXPR_OP_ANY" && quantifierOperator !== "=") {
+    return;
+  }
+  if (kind === "AEXPR_OP_ALL" && quantifierOperator !== "<>") {
+    return;
+  }
+  const rexpr = asRecord(expression.rexpr);
+  const items =
+    kind === "AEXPR_IN"
+      ? readArray(asRecord(rexpr?.List)?.items)
+      : readArray(asRecord(rexpr?.A_ArrayExpr)?.elements);
+  if (items.length === 0) {
+    return;
+  }
+  if (kind !== "AEXPR_IN" && items.some((item) => asRecord(item)?.A_ArrayExpr)) {
+    return;
+  }
+  return {
+    A_Expr: {
+      kind: "AEXPR_IN",
+      name: readArray(expression.name).map(canonicalConstraintPayload),
+      lexpr: canonicalConstraintPayload(stripLocations(expression.lexpr)),
+      elements: items.map(canonicalConstraintPayload),
+    },
+  };
+}
+
+function unifiedBetweenPayload(record: AstNode): Record<string, unknown> | undefined {
+  const expression = asRecord(record.A_Expr);
+  if (!expression) {
+    return;
+  }
+  const kind = readString(expression.kind);
+  if (kind !== "AEXPR_BETWEEN" && kind !== "AEXPR_NOT_BETWEEN") {
+    return;
+  }
+  const bounds = readArray(asRecord(asRecord(expression.rexpr)?.List)?.items);
+  const low = bounds[0];
+  const high = bounds[1];
+  if (low === undefined || high === undefined) {
+    return;
+  }
+  const lexpr = stripLocations(expression.lexpr);
+  const comparison = (operator: string, bound: unknown): Record<string, unknown> => ({
+    A_Expr: {
+      kind: "AEXPR_OP",
+      name: [{ String: { sval: operator } }],
+      lexpr: canonicalConstraintPayload(lexpr),
+      rexpr: canonicalConstraintPayload(stripLocations(bound)),
+    },
+  });
+  const [lowerOperator, upperOperator, boolop] =
+    kind === "AEXPR_BETWEEN" ? [">=", "<=", "AND_EXPR"] : ["<", ">", "OR_EXPR"];
+  return {
+    BoolExpr: {
+      boolop,
+      args: [comparison(lowerOperator, low), comparison(upperOperator, high)],
+    },
+  };
+}
+
+const constantCastTypes = new Set([
+  "bigint",
+  "boolean",
+  "bool",
+  "bpchar",
+  "character",
+  "character varying",
+  "date",
+  "double precision",
+  "float4",
+  "float8",
+  "int2",
+  "int4",
+  "int8",
+  "integer",
+  "json",
+  "jsonb",
+  "name",
+  "numeric",
+  "real",
+  "smallint",
+  "text",
+  "time",
+  "timestamp",
+  "timestamp with time zone",
+  "timestamp without time zone",
+  "timestamptz",
+  "uuid",
+  "varchar",
+]);
+
+function constantTypeCastPayload(record: AstNode): unknown {
+  const typeCast = asRecord(record.TypeCast);
+  if (!typeCast) {
+    return;
+  }
+  const arg = asRecord(typeCast.arg);
+  if (!arg || arg.A_Const === undefined) {
+    return;
+  }
+  const typeName = typeNameToSql(typeCast.typeName);
+  if (!constantCastTypes.has(typeName)) {
+    return;
+  }
+  return {
+    ConstantCast: {
+      arg: canonicalConstraintPayload(stripLocations(arg)),
+      typeName: canonicalConstraintTypeName(typeCast.typeName),
+    },
+  };
 }
 
 function canonicalConstraintTypeName(value: unknown): unknown {

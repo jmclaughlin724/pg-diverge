@@ -5,6 +5,7 @@ import type { AstNode } from "./ast.js";
 import {
   asRecord,
   astStatements,
+  qualifiedName,
   rangeVarName,
   readArray,
   readBoolean,
@@ -464,6 +465,12 @@ export function statementFacts(
   if (tag === "CreateFunctionStmt") {
     Object.assign(facts, functionFacts(node));
   }
+  if (tag === "CreateTrigStmt") {
+    const triggerFunction = qualifiedName(node.funcname);
+    if (triggerFunction) {
+      facts.triggerFunction = `${triggerFunction.schema}.${triggerFunction.name}`;
+    }
+  }
   if (tag === "ViewStmt") {
     Object.assign(facts, viewFacts(node));
   }
@@ -478,19 +485,8 @@ export function statementFacts(
 
 function commentDropSql(node: AstNode): string | undefined {
   try {
-    const cloned = asRecord(structuredClone(node));
-    if (!cloned) {
-      return;
-    }
-    const { comment: _comment, ...stripped } = cloned;
-    return deparseSync(
-      JSON.parse(
-        JSON.stringify({
-          stmts: [{ stmt: { CommentStmt: stripped } }],
-          version: 170_004,
-        })
-      )
-    );
+    const { comment: _comment, ...stripped } = node;
+    return deparseSync(JSON.parse(JSON.stringify({ CommentStmt: stripped })));
   } catch {
     // Unrenderable guard SQL has no facts to contribute.
   }

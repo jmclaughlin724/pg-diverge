@@ -70,10 +70,13 @@ export function stringList(value: unknown): string[] {
     .filter((item): item is string => item !== undefined);
 }
 
+const statementTerminator = 0x3b;
+
 export function astStatements(ast: unknown, sql: string): AstStatement[] {
   const statements: AstStatement[] = [];
 
   const bytes = Buffer.from(sql, "utf8");
+  let prevEnd = 0;
   for (const raw of readArray(asRecord(ast)?.stmts)) {
     const record = asRecord(raw);
     const node = asRecord(record?.stmt);
@@ -84,21 +87,16 @@ export function astStatements(ast: unknown, sql: string): AstStatement[] {
     const location = readNumber(record?.stmt_location) ?? 0;
     const length = readNumber(record?.stmt_len);
     const end = length === undefined ? bytes.length : location + length;
-    let byteStart = location;
-    while (byteStart < end && asciiWhitespace.has(bytes[byteStart] ?? -1)) {
-      byteStart += 1;
-    }
     statements.push({
-      byteStart,
+      byteStart: prevEnd,
       node,
       tag,
-      text: bytes.subarray(byteStart, end).toString("utf8").trimEnd(),
+      text: bytes.subarray(prevEnd, end).toString("utf8").trimEnd(),
     });
+    prevEnd = bytes[end] === statementTerminator ? end + 1 : end;
   }
   return statements;
 }
-
-const asciiWhitespace = new Set([0x20, 0x09, 0x0a, 0x0d, 0x0c, 0x0b]);
 
 export function rangeVarName(value: unknown): QualifiedName | undefined {
   const relation = asRecord(asRecord(value)?.RangeVar) ?? asRecord(value);

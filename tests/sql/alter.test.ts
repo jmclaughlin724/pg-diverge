@@ -231,6 +231,65 @@ describe("column-level alter lane", () => {
     expect(sql).not.toContain("DROP TABLE");
   });
 
+  it("blocks virtual generated expression drops that PostgreSQL cannot alter", async () => {
+    const before =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (upper(first_name)) VIRTUAL);";
+    const after =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text);";
+    const plan = await diff(before, after);
+    const operation = plan.operations.find((item) => item.key === "table:app.people");
+
+    expect(operation?.kind).toBe("replace");
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+          message: expect.stringContaining("generatedKind"),
+        }),
+      ])
+    );
+  });
+
+  it("blocks generated storage changes that PostgreSQL cannot alter", async () => {
+    const before =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (upper(first_name)) STORED);";
+    const after =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (upper(first_name)) VIRTUAL);";
+    const plan = await diff(before, after);
+    const operation = plan.operations.find((item) => item.key === "table:app.people");
+
+    expect(operation?.kind).toBe("replace");
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+          message: expect.stringContaining("generatedKind"),
+        }),
+      ])
+    );
+  });
+
+  it("blocks NOT NULL enforcement changes that require a named constraint", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text NOT NULL);",
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text NOT NULL NOT ENFORCED);"
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.people");
+
+    expect(operation?.kind).toBe("replace");
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+          message: expect.stringContaining("notNullEnforced"),
+        }),
+      ])
+    );
+  });
+
   it("adds generated columns without blocking", async () => {
     const plan = await diff(
       "CREATE TABLE app.people (id bigint PRIMARY KEY);",

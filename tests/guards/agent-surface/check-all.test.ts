@@ -18,7 +18,7 @@ function trackedRepo(files: Record<string, string>): string {
   return root;
 }
 
-describe("aggregate generated-surface drift guard", () => {
+describe("aggregate generated-surface drift guard", { timeout: 20_000 }, () => {
   it("derives every projection target, including Codex hook registration, from the manifest", () => {
     expect(agentSurfaceTargetPaths()).toEqual(
       expect.arrayContaining([

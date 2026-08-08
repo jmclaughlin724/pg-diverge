@@ -166,7 +166,7 @@ describe("migrations source replay", () => {
     expect(first.formatVersion).toBe(MODEL_FORMAT_VERSION);
     expect(first.objects).toHaveLength(246);
     expect(first.fingerprint).toBe(
-      "13e63abff9a09d43a51c2a503fc8035225ad4960a893925f77dabe6a1b91c5e2"
+      "981829cb6c103886b7981a4394fd6d8990db32ec502ba4b2beac0d7f813bedb3"
     );
     expect(second.objects.map(({ hash, key }) => ({ hash, key }))).toEqual(
       first.objects.map(({ hash, key }) => ({ hash, key }))
@@ -779,23 +779,25 @@ ALTER TABLE app.accounts RENAME TO "Purchase Order";`,
     expect(columnComment?.sql).toBe(`COMMENT ON COLUMN app."Purchase Order".email IS 'contact'`);
   });
 
-  it("preserves empty-string comments and deletes only IS NULL comments", async () => {
+  it("deletes empty-string and IS NULL comments while keeping nonempty comments", async () => {
     const model = await extractMigrations([
       [
         "20240101000000_empty_comment.sql",
         `CREATE SCHEMA app;
 CREATE SCHEMA other;
+CREATE SCHEMA extra;
 COMMENT ON SCHEMA app IS '';
 COMMENT ON SCHEMA other IS 'temp';
-COMMENT ON SCHEMA other IS NULL;`,
+COMMENT ON SCHEMA other IS NULL;
+COMMENT ON SCHEMA extra IS 'docs';`,
       ],
     ]);
 
     expect(errors(model.diagnostics)).toEqual([]);
     const comments = model.objects.filter((object) => object.ref.kind === "comment");
     expect(comments).toHaveLength(1);
-    expect(comments[0]?.metadata.description).toBe("");
-    expect(comments[0]?.metadata.commentTarget).toMatchObject({ kind: "schema", name: "app" });
+    expect(comments[0]?.metadata.description).toBe("docs");
+    expect(comments[0]?.metadata.commentTarget).toMatchObject({ kind: "schema", name: "extra" });
   });
 
   it("hard-fails unsupported rename types without returning partial objects", async () => {
@@ -1855,6 +1857,35 @@ GRANT SELECT(id, token) ON app.sessions TO app_worker;`,
     expect(grants[0]?.sql).toBe(
       'GRANT INSERT, SELECT ("id", "token") ON TABLE "app"."sessions" TO "app_worker"'
     );
+    expect(model.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("replays a covering revoke followed by a re-grant as the re-granted state", async () => {
+    const files: [string, string][] = [
+      [
+        "20240101000000_grant.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.sessions (id integer, token text);
+GRANT INSERT, SELECT, UPDATE ON app.sessions TO app_worker;`,
+      ],
+      [
+        "20240102000000_regrant.sql",
+        `REVOKE INSERT, SELECT, UPDATE ON app.sessions FROM app_worker;
+GRANT INSERT, SELECT (id, token), UPDATE (token) ON app.sessions TO app_worker;`,
+      ],
+    ];
+    const model = await extractMigrations(files);
+    const declared = await extractDirectory(files);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.verb).toBe("GRANT");
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT", "UPDATE"]);
+    expect(grants[0]?.metadata.columnPrivileges).toEqual({
+      SELECT: ["id", "token"],
+      UPDATE: ["token"],
+    });
     expect(model.fingerprint).toBe(declared.fingerprint);
   });
 

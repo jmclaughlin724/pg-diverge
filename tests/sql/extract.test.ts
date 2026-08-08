@@ -1151,6 +1151,233 @@ AS $function$ SELECT 1 $function$`,
     expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_FORWARD_REFERENCE_ORDER");
   });
 
+  it("allows references to a pre-existing table that is dropped and recreated", async () => {
+    const diagnostics = await checkMigrationSql(`
+      GRANT SELECT ON TABLE app.accounts TO authenticated;
+
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+  });
+
+  it("rejects routine references to columns introduced only by the recreated shape", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.read_secret()
+      RETURNS uuid
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+      END;
+      $$;
+
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.accounts.secret_id");
+  });
+
+  it("allows routine references to columns created before the drop across a recreate", async () => {
+    const diagnostics = await checkMigrationSql(`
+      ALTER TABLE app.accounts ADD COLUMN secret_id uuid;
+
+      CREATE OR REPLACE FUNCTION app.read_secret()
+      RETURNS uuid
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+      END;
+      $$;
+
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+  });
+
+  it("rejects references to a column introduced only by the recreated shape", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE IF NOT EXISTS app.t (new_col int);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
+  it("rejects references to a column introduced only by a recreated foreign table", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.ft;
+
+      DROP FOREIGN TABLE IF EXISTS app.ft;
+
+      CREATE FOREIGN TABLE IF NOT EXISTS app.ft (new_col int) SERVER app_server;
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.ft.new_col");
+  });
+
+  it("rejects references to a column introduced only by CREATE TABLE AS", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE app.t AS SELECT 1 AS new_col;
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
+  it("rejects references to a column introduced only by a recreated materialized view", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP MATERIALIZED VIEW IF EXISTS app.t;
+
+      CREATE MATERIALIZED VIEW app.t AS SELECT 1 AS new_col;
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
+  it("fails closed for columns inherited only by the recreated table", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE TABLE app.parent (new_col int);
+
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE app.t () INHERITS (app.parent);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t");
+  });
+
+  it("rejects references after a cascading schema drop removed the baseline relation", async () => {
+    const diagnostics = await checkMigrationSql(`
+      DROP SCHEMA app CASCADE;
+      CREATE SCHEMA app;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT * FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE app.t (id bigint PRIMARY KEY);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t");
+  });
+
+  it("allows references to a column created before the drop across a recreate", async () => {
+    const diagnostics = await checkMigrationSql(`
+      ALTER TABLE app.t ADD COLUMN new_col int;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE IF NOT EXISTS app.t (new_col int);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+  });
+
+  it("rejects references to a table inside its own drop and recreate gap", async () => {
+    const diagnostics = await checkMigrationSql(`
+      DROP TABLE IF EXISTS app.accounts;
+
+      CREATE OR REPLACE VIEW app.account_summary AS SELECT id FROM app.accounts;
+
+      CREATE TABLE IF NOT EXISTS app.accounts (id bigint PRIMARY KEY);
+    `);
+
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_FORWARD_REFERENCE_ORDER");
+  });
+
+  it("rejects references when an earlier drop already removed the relation", async () => {
+    const diagnostics = await checkMigrationSql(`
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT * FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t");
+  });
+
+  it("rejects references to a column dropped again before the recreate", async () => {
+    const diagnostics = await checkMigrationSql(`
+      ALTER TABLE app.t ADD COLUMN new_col int;
+
+      ALTER TABLE app.t DROP COLUMN new_col;
+
+      CREATE OR REPLACE VIEW app.v AS SELECT new_col FROM app.t;
+
+      DROP TABLE IF EXISTS app.t;
+
+      CREATE TABLE IF NOT EXISTS app.t (new_col int);
+    `);
+    const forwardReferences = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FORWARD_REFERENCE_ORDER"
+    );
+
+    expect(forwardReferences).toHaveLength(1);
+    expect(forwardReferences[0]?.hint).toContain("app.t.new_col");
+  });
+
   it("reports unknown configured validators", async () => {
     const diagnostics = await checkMigrationSql("CREATE SCHEMA IF NOT EXISTS app;", {
       config: { validators: ["internal-parser", "definitely-not-real"] },
